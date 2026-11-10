@@ -1,0 +1,23 @@
+[package]
+name = "rhnsw"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+
+[lib]
+name = "rhnsw"
+
+[dependencies]
+fearless_simd = "1.2"
+
+[dev-dependencies]
+criterion = "0.8"
+proptest = "1.12"
+rand = "0.10"
+
+[[bench]]
+name = "simd"
+harness = false
+
+[profile.bench]
+debug = true
