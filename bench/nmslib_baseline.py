@@ -27,6 +27,8 @@ import numpy as np
 import common
 
 POST = 2
+WHEEL_NOTE = ("nmslib 2.1.2 PyPI wheel is compiled for baseline SSE2 only "
+              "(no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected.")
 
 
 def run_build(n: int, seed: int, threads: int) -> dict:
@@ -93,6 +95,8 @@ def main() -> None:
                     help="independent builds (insertion-order seeds 1..N)")
     ap.add_argument("--threads", type=int, default=32, help="indexThreadQty for the build")
     ap.add_argument("--out", help="output JSON (default bench/results/nmslib_<n>.json)")
+    ap.add_argument("--build-note", default=WHEEL_NOTE,
+                    help="note describing how nmslib was built, stored in the JSON")
     args = ap.parse_args()
 
     # Compute and cache ground truth once, before the build processes start.
@@ -120,10 +124,7 @@ def main() -> None:
         "params": {"M": common.M, "efConstruction": common.EF_CONSTRUCTION, "post": POST,
                    "indexThreadQty": args.threads},
         "machine": common.machine_info(),
-        "notes": [
-            "nmslib 2.1.2 PyPI wheel is compiled for baseline SSE2 only "
-            "(no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected.",
-        ],
+        "notes": [args.build_note],
         "builds": builds,
         "noise_band": common.noise_band(builds),
     }

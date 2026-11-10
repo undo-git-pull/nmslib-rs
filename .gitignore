@@ -2,3 +2,4 @@ target/
 .venv/
 bench/data/
 __pycache__/
+.venv-nmslib-native/

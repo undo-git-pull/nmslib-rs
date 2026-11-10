@@ -1,0 +1,230 @@
+{
+  "library": "nmslib",
+  "library_version": "2.1.2",
+  "dataset": "sift-128-euclidean",
+  "n_base": 1000000,
+  "n_queries": 10000,
+  "k": 10,
+  "recall_metric": "distance-based recall@10 (ann-benchmarks style); recall_ids is plain id overlap",
+  "query_threads": 1,
+  "params": {
+    "M": 16,
+    "efConstruction": 200,
+    "post": 2,
+    "indexThreadQty": 32
+  },
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "986507d",
+    "date": "2026-11-10T19:04:57+0000"
+  },
+  "notes": [
+    "nmslib 2.1.2 built from the sdist (pip install --no-binary nmslib) with -march=native on this machine (AVX2 and AVX-512 enabled)."
+  ],
+  "builds": [
+    {
+      "insertion_order_seed": 1,
+      "build_time_s": 51.88,
+      "memory": {
+        "rss_before_build_mb": 1044.6,
+        "peak_rss_build_mb": 3138.8,
+        "rss_after_build_mb": 3138.8,
+        "index_mb": 2094.2
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.77719,
+          "recall_ids": 0.77636,
+          "qps": 32201.0,
+          "query_time_s": 0.311,
+          "peak_rss_mb": 3336.1
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.88667,
+          "recall_ids": 0.88579,
+          "qps": 21135.1,
+          "query_time_s": 0.473,
+          "peak_rss_mb": 3339.5
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.9558,
+          "recall_ids": 0.95497,
+          "qps": 12935.5,
+          "query_time_s": 0.773,
+          "peak_rss_mb": 3339.5
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.9876,
+          "recall_ids": 0.98689,
+          "qps": 7251.0,
+          "query_time_s": 1.379,
+          "peak_rss_mb": 3339.5
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99742,
+          "recall_ids": 0.99681,
+          "qps": 4049.8,
+          "query_time_s": 2.469,
+          "peak_rss_mb": 3343.1
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99968,
+          "recall_ids": 0.99909,
+          "qps": 2199.0,
+          "query_time_s": 4.548,
+          "peak_rss_mb": 3344.1
+        },
+        {
+          "ef_search": 640,
+          "recall": 0.99998,
+          "recall_ids": 0.99937,
+          "qps": 1211.6,
+          "query_time_s": 8.253,
+          "peak_rss_mb": 3344.2
+        }
+      ]
+    },
+    {
+      "insertion_order_seed": 2,
+      "build_time_s": 51.81,
+      "memory": {
+        "rss_before_build_mb": 1044.4,
+        "peak_rss_build_mb": 3138.6,
+        "rss_after_build_mb": 3138.6,
+        "index_mb": 2094.2
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.7775,
+          "recall_ids": 0.77655,
+          "qps": 32347.3,
+          "query_time_s": 0.309,
+          "peak_rss_mb": 3338.1
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.88963,
+          "recall_ids": 0.88865,
+          "qps": 21515.6,
+          "query_time_s": 0.465,
+          "peak_rss_mb": 3341.3
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.95782,
+          "recall_ids": 0.95695,
+          "qps": 13160.5,
+          "query_time_s": 0.76,
+          "peak_rss_mb": 3341.3
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.98847,
+          "recall_ids": 0.98779,
+          "qps": 7481.2,
+          "query_time_s": 1.337,
+          "peak_rss_mb": 3341.3
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99744,
+          "recall_ids": 0.99675,
+          "qps": 4074.0,
+          "query_time_s": 2.455,
+          "peak_rss_mb": 3343.5
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99968,
+          "recall_ids": 0.99899,
+          "qps": 2215.5,
+          "query_time_s": 4.514,
+          "peak_rss_mb": 3344.3
+        },
+        {
+          "ef_search": 640,
+          "recall": 0.99999,
+          "recall_ids": 0.99931,
+          "qps": 1195.3,
+          "query_time_s": 8.366,
+          "peak_rss_mb": 3346.7
+        }
+      ]
+    }
+  ],
+  "noise_band": [
+    {
+      "ef_search": 10,
+      "recall_min": 0.77719,
+      "recall_max": 0.7775,
+      "recall_mean": 0.777345,
+      "recall_std": 0.000219,
+      "spread": 0.00031,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 20,
+      "recall_min": 0.88667,
+      "recall_max": 0.88963,
+      "recall_mean": 0.88815,
+      "recall_std": 0.002093,
+      "spread": 0.00296,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 40,
+      "recall_min": 0.9558,
+      "recall_max": 0.95782,
+      "recall_mean": 0.95681,
+      "recall_std": 0.001428,
+      "spread": 0.00202,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 80,
+      "recall_min": 0.9876,
+      "recall_max": 0.98847,
+      "recall_mean": 0.988035,
+      "recall_std": 0.000615,
+      "spread": 0.00087,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 160,
+      "recall_min": 0.99742,
+      "recall_max": 0.99744,
+      "recall_mean": 0.99743,
+      "recall_std": 1.4e-05,
+      "spread": 2e-05,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 320,
+      "recall_min": 0.99968,
+      "recall_max": 0.99968,
+      "recall_mean": 0.99968,
+      "recall_std": 0.0,
+      "spread": 0.0,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 640,
+      "recall_min": 0.99998,
+      "recall_max": 0.99999,
+      "recall_mean": 0.999985,
+      "recall_std": 7e-06,
+      "spread": 1e-05,
+      "tolerance": 0.005
+    }
+  ]
+}
