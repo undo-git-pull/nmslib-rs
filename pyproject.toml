@@ -1,0 +1,10 @@
+[build-system]
+requires = ["maturin>=1.16,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rhnsw"
+version = "0.1.0"
+description = "HNSW approximate nearest neighbor search in Rust"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2"]

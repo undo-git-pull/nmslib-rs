@@ -6,9 +6,11 @@ rust-version = "1.89"
 
 [lib]
 name = "rhnsw"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 fearless_simd = "1.2"
+pyo3 = "0.30"
 
 [dev-dependencies]
 criterion = "0.8"
