@@ -356,3 +356,30 @@ fn diag_unreachable_by_threads() {
         }
     }
 }
+
+#[test]
+fn frozen_and_build_forms_give_identical_results() {
+    for space in [Space::L2, Space::Cosine] {
+        let mut index = Hnsw::new(16, space, Params { ef_construction: 100, ..Params::default() });
+        index.add(&random_data(5_000, 16, 51), 4);
+        assert!(matches!(index.repr, Repr::Frozen(_)), "add leaves the index frozen");
+        let queries = random_data(200, 16, 52);
+        let run = |ix: &Hnsw| -> Vec<_> { queries.chunks_exact(16).map(|q| ix.knn_query(q, 10, 60)).collect() };
+        let frozen = run(&index);
+        index.thaw();
+        assert!(matches!(index.repr, Repr::Build { .. }));
+        assert_eq!(run(&index), frozen);
+        index.freeze();
+        assert_eq!(run(&index), frozen);
+    }
+}
+
+#[test]
+fn frozen_level0_starts_on_a_cache_line() {
+    let mut index = Hnsw::new(24, Space::L2, Params::default());
+    index.add(&random_data(1_000, 24, 53), 1);
+    let Repr::Frozen(f) = &index.repr else { panic!("not frozen") };
+    let v = f.view();
+    assert_eq!(v.vector(0).as_ptr() as usize % 64, 0);
+    assert_eq!(v.vector(999).as_ptr() as usize % 64, 0);
+}

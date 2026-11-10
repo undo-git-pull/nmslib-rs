@@ -32,7 +32,7 @@ use rayon::prelude::*;
 
 use std::path::Path;
 
-use crate::frozen::{self, LoadError, Mapped, Meta};
+use crate::frozen::{self, Frozen, LoadError, Meta};
 use crate::simd::{dot_in, l2_sq_in, prefetch_in};
 use crate::visited::VisitedSet;
 
@@ -383,11 +383,14 @@ impl Drop for PooledScratch<'_> {
     }
 }
 
-/// How an index holds its data: built in memory (and still growable), or a
-/// saved file mapped read-only.
+/// How an index holds its data. `Build` is the concurrent graph used while
+/// adding; after each `add` the index is frozen into the interleaved,
+/// cache-line-aligned file layout, in memory (see NOTES.md for the measured
+/// effect). A loaded index is `Frozen` too, owned or memory-mapped
+/// (read-only).
 enum Repr {
     Build { store: Store, graph: Graph },
-    Mapped(Mapped),
+    Frozen(Frozen),
 }
 
 pub struct Hnsw {
@@ -422,96 +425,96 @@ impl Hnsw {
     pub fn dim(&self) -> usize {
         match &self.repr {
             Repr::Build { store, .. } => store.dim,
-            Repr::Mapped(m) => m.header().dim,
+            Repr::Frozen(f) => f.header().dim,
         }
     }
 
     pub fn space(&self) -> Space {
         match &self.repr {
             Repr::Build { store, .. } => store.space,
-            Repr::Mapped(m) => m.header().space,
+            Repr::Frozen(f) => f.header().space,
         }
     }
 
     pub fn len(&self) -> usize {
         match &self.repr {
             Repr::Build { store, .. } => store.data.len() / store.dim,
-            Repr::Mapped(m) => m.header().n,
+            Repr::Frozen(f) => f.header().n,
         }
     }
 
     /// True for an index loaded with `mmap`; such an index cannot grow.
     pub fn is_read_only(&self) -> bool {
-        matches!(self.repr, Repr::Mapped(_))
+        matches!(&self.repr, Repr::Frozen(f) if f.is_mapped())
     }
 
     fn build_parts(&self) -> (&Store, &Graph) {
         match &self.repr {
             Repr::Build { store, graph } => (store, graph),
-            Repr::Mapped(_) => panic!("index is memory-mapped and read-only"),
+            Repr::Frozen(_) => unreachable!("building happens on a thawed index"),
         }
     }
 
     fn build_parts_mut(&mut self) -> (&mut Store, &mut Graph) {
         match &mut self.repr {
             Repr::Build { store, graph } => (store, graph),
-            Repr::Mapped(_) => panic!("index is memory-mapped and read-only"),
+            Repr::Frozen(_) => unreachable!("building happens on a thawed index"),
         }
     }
 
-    /// Saves the index to `path` (see `frozen` for the format). Writes a
-    /// temporary file in the same directory, then renames it over `path`.
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        let meta = Meta {
+    fn meta(&self) -> Meta {
+        Meta {
             dim: self.dim(),
             space: self.space(),
             m: self.params.m,
             ef_construction: self.params.ef_construction,
             post: self.params.post,
             seed: self.params.seed,
-        };
+        }
+    }
+
+    /// Converts the build graph to the interleaved layout and drops it.
+    /// Memory briefly holds both while the copy is made.
+    fn freeze(&mut self) {
+        if let Repr::Build { store, graph } = &self.repr {
+            let frozen = Frozen::from_view(&BuildView { store, graph }, &self.meta());
+            self.repr = Repr::Frozen(frozen);
+        }
+    }
+
+    /// Converts a frozen in-memory index back to the build graph, to add to it.
+    fn thaw(&mut self) {
+        if let Repr::Frozen(f) = &self.repr {
+            assert!(!f.is_mapped(), "index is memory-mapped and read-only");
+            let v = f.view();
+            let store = store_from_view(&v, self.dim());
+            let graph = graph_from_view(&v, self.params.m);
+            self.repr = Repr::Build { store, graph };
+        }
+    }
+
+    /// Saves the index to `path` (see `frozen` for the format). Writes a
+    /// temporary file in the same directory, then renames it over `path`.
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        let meta = self.meta();
         match &self.repr {
             Repr::Build { store, graph } => frozen::save(&BuildView { store, graph }, &meta, path),
-            Repr::Mapped(m) => frozen::save(&m.view(), &meta, path),
+            Repr::Frozen(f) => frozen::save(&f.view(), &meta, path),
         }
     }
 
     /// Loads a saved index. With `mmap`, the file is mapped read-only: pages
     /// are shared with every other process mapping it, nothing is read until
     /// queries touch it, and the index cannot grow. The file must not be
-    /// modified while mapped. Without `mmap`, the index is copied into memory
-    /// and works like a freshly built one. Adding to a loaded index draws
-    /// levels from a fresh generator seeded with the saved seed.
+    /// modified while mapped. Without `mmap`, the file is read into memory
+    /// and the index can grow. Adding to a loaded index draws levels from a
+    /// fresh generator seeded with the saved seed.
     pub fn load(path: &Path, mmap: bool) -> Result<Hnsw, LoadError> {
-        let mapped = Mapped::open(path)?;
-        let h = mapped.header().clone();
+        let frozen = if mmap { Frozen::map(path)? } else { Frozen::read(path)? };
+        let h = frozen.header().clone();
         let params = Params { m: h.m, ef_construction: h.ef_construction, post: h.post, seed: h.seed };
         let mut index = Hnsw::new(h.dim, h.space, params);
-        if mmap {
-            index.repr = Repr::Mapped(mapped);
-            return Ok(index);
-        }
-        let v = mapped.view();
-        let mut data = Vec::with_capacity(h.n * h.dim);
-        let mut levels = Vec::with_capacity(h.n);
-        for id in 0..h.n as u32 {
-            data.extend_from_slice(v.vector(id));
-            levels.push(v.level(id) as u8);
-        }
-        let mut graph = Graph::new(h.m, h.max_m0);
-        graph.grow(&levels);
-        let mut ids = Vec::new();
-        for id in 0..h.n as u32 {
-            for level in 0..=v.level(id) {
-                ids.clear();
-                ids.extend(v.neighbors(id, level));
-                graph.set_neighbors(id, level, &ids);
-            }
-        }
-        if let Some(e) = h.entry.node {
-            graph.set_entry(e, h.entry.max_level);
-        }
-        index.repr = Repr::Build { store: Store { dim: h.dim, space: h.space, data }, graph };
+        index.repr = Repr::Frozen(frozen);
         Ok(index)
     }
 
@@ -540,6 +543,7 @@ impl Hnsw {
         if n == first_id {
             return;
         }
+        self.thaw();
         let levels: Vec<u8> = (first_id..n).map(|_| self.random_level()).collect();
         {
             let (store, graph) = self.build_parts_mut();
@@ -571,6 +575,7 @@ impl Hnsw {
             self.insert_all(&reverse, threads);
             self.merge_level0(&first, threads);
         }
+        self.freeze();
     }
 
     /// The `k` nearest neighbors of `query`, nearest first, as `(id, distance)`.
@@ -627,7 +632,7 @@ impl Hnsw {
     fn search<'s>(&self, query: &[f32], k: usize, ef_search: usize, scratch: &'s mut Scratch) -> &'s [Cand] {
         match &self.repr {
             Repr::Build { store, graph } => self.search_in(&BuildView { store, graph }, query, k, ef_search, scratch),
-            Repr::Mapped(m) => self.search_in(&m.view(), query, k, ef_search, scratch),
+            Repr::Frozen(f) => self.search_in(&f.view(), query, k, ef_search, scratch),
         }
     }
 
@@ -765,18 +770,49 @@ impl Hnsw {
         }
     }
 
+    /// A copy of the graph in build form, for inspecting its structure.
     #[cfg(test)]
-    pub(crate) fn graph(&self) -> &Graph {
-        self.build_parts().1
+    pub(crate) fn graph(&self) -> Graph {
+        match &self.repr {
+            Repr::Build { store, graph } => graph_from_view(&BuildView { store, graph }, self.params.m),
+            Repr::Frozen(f) => graph_from_view(&f.view(), self.params.m),
+        }
     }
 
     /// Level sizes and mean degrees, for comparing graph shape with NMSLIB.
     pub fn stats(&self) -> GraphStats {
         match &self.repr {
             Repr::Build { store, graph } => stats_of(&BuildView { store, graph }),
-            Repr::Mapped(m) => stats_of(&m.view()),
+            Repr::Frozen(f) => stats_of(&f.view()),
         }
     }
+}
+
+fn store_from_view<V: View>(v: &V, dim: usize) -> Store {
+    let mut data = Vec::with_capacity(v.len() * dim);
+    for id in 0..v.len() as u32 {
+        data.extend_from_slice(v.vector(id));
+    }
+    Store { dim, space: v.space(), data }
+}
+
+fn graph_from_view<V: View>(v: &V, m: usize) -> Graph {
+    let levels: Vec<u8> = (0..v.len() as u32).map(|id| v.level(id) as u8).collect();
+    let mut graph = Graph::new(m, 2 * m);
+    graph.grow(&levels);
+    let mut ids = Vec::new();
+    for id in 0..v.len() as u32 {
+        for level in 0..=v.level(id) {
+            ids.clear();
+            ids.extend(v.neighbors(id, level));
+            graph.set_neighbors(id, level, &ids);
+        }
+    }
+    let entry = v.entry();
+    if let Some(e) = entry.node {
+        graph.set_entry(e, entry.max_level);
+    }
+    graph
 }
 
 fn stats_of<V: View>(v: &V) -> GraphStats {

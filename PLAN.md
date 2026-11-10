@@ -173,7 +173,7 @@ Implementation:
 
 - A read-only graph type for the saved layout. `search_layer` and the query path become generic over how neighbor lists and vectors are read, so the build graph (atomics) and the mapped graph share one search implementation. The prefetching from the phase 5 profiling applies to both.
 - `memmap2` maps the file read-only and `bytemuck` turns aligned byte ranges into `&[f32]` and `&[u32]` without copying. The mapping call is `unsafe`: if another process truncates or rewrites the file while it is mapped, reads can fault or return garbage. Record that condition at the `unsafe` block and in the Python docstring for `load`.
-- Optional, measured: whether the in-memory index should also use the interleaved layout after a build. Decide from the QPS numbers below, not up front.
+- Optional, measured: whether the in-memory index should also use the interleaved layout after a build. Decide from the QPS numbers below, not up front. Decided yes: every `add` now ends by freezing the index into that layout in memory. Measured against the build layout: 1.25 to 1.29x QPS on SIFT 1M, 1.05 to 1.07x on GloVe 1.18M, 0.92 to 1.00x on GloVe 100k (see NOTES.md).
 
 Tests:
 

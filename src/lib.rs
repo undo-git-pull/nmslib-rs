@@ -108,6 +108,12 @@ mod rhnsw {
         /// Adds vectors, a C-contiguous float32 array of shape (n, dim).
         /// `num_threads`: 0 uses all cores; 1 is the sequential build, which
         /// gives the same graph for the same seed.
+        ///
+        /// When the build finishes, the index is rearranged into the same
+        /// interleaved, cache-line-aligned layout as a saved file. On large
+        /// indexes that makes queries faster (about 25% on SIFT1M, 5% on
+        /// GloVe-100). That step copies the index once (memory briefly holds
+        /// both), and a later add_items converts it back first.
         #[pyo3(signature = (vectors, num_threads = 0))]
         fn add_items(
             &mut self,

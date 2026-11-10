@@ -1,4 +1,6 @@
-//! Saved-index file format and the read-only, memory-mapped index.
+//! Saved-index file format, and the read-only index that uses it: either a
+//! memory-mapped file or an in-memory copy in the same layout. Built indexes
+//! are converted to this layout after each `add` (see `Hnsw::freeze`).
 //!
 //! The format is rhnsw's own (not NMSLIB's), little-endian and versioned.
 //! Every section starts on a 64-byte boundary:
@@ -301,23 +303,41 @@ fn range(s: Section) -> std::ops::Range<usize> {
     s.offset as usize..(s.offset + s.len) as usize
 }
 
-/// A saved index mapped read-only into memory.
-pub struct Mapped {
-    map: Mmap,
+/// Memory holding an index in the file layout.
+enum Backing {
+    /// A saved file mapped read-only; shared with other processes.
+    Mapped(Mmap),
+    /// An owned copy. `words[start..]` begins on a 64-byte boundary, so
+    /// level-0 blocks sit on cache lines exactly as they do in a mapped file.
+    Owned { words: Vec<u64>, start: usize, len: usize },
+}
+
+/// An index in the interleaved file layout, read-only: either a mapped file
+/// or an in-memory copy (a loaded file, or a freshly built index after
+/// `freeze`).
+pub struct Frozen {
+    backing: Backing,
     header: Header,
 }
 
-impl Mapped {
-    /// Maps and validates the index at `path`.
-    pub fn open(path: &Path) -> Result<Mapped, LoadError> {
-        if cfg!(target_endian = "big") {
-            return Err(bad("rhnsw index files are little-endian; big-endian hosts are not supported"));
-        }
-        let file = File::open(path)?;
-        let len = file.metadata()?.len();
-        if len < HEADER_LEN as u64 {
-            return Err(bad(format!("file is {len} bytes, shorter than an rhnsw header")));
-        }
+/// Zeroed memory of `len` bytes starting on a 64-byte boundary.
+fn aligned_zeroed(len: usize) -> Backing {
+    let words = vec![0u64; len.div_ceil(8) + 8];
+    let start = words.as_ptr().align_offset(ALIGN as usize);
+    Backing::Owned { words, start, len }
+}
+
+fn owned_bytes_mut(backing: &mut Backing) -> &mut [u8] {
+    match backing {
+        Backing::Owned { words, start, len } => &mut bytemuck::cast_slice_mut(&mut words[*start..])[..*len],
+        Backing::Mapped(_) => unreachable!("mapped memory is read-only"),
+    }
+}
+
+impl Frozen {
+    /// Maps and validates the index file at `path`.
+    pub fn map(path: &Path) -> Result<Frozen, LoadError> {
+        let file = open_checked(path)?;
         // SAFETY: the map is read-only, so this process never writes through
         // it. Rust cannot rule out another process truncating or rewriting the
         // file while it is mapped; reads would then fault (SIGBUS) or see
@@ -325,10 +345,38 @@ impl Mapped {
         // is loaded with mmap. `save` replaces files by renaming a new file
         // over them, which leaves existing mappings of the old file intact.
         let map = unsafe { Mmap::map(&file)? };
-        let header = Header::decode(&map[..HEADER_LEN], map.len() as u64)?;
-        let mapped = Mapped { map, header };
-        mapped.check_levels_and_offsets()?;
-        Ok(mapped)
+        Frozen::validated(Backing::Mapped(map))
+    }
+
+    /// Reads and validates the index file at `path` into owned memory.
+    pub fn read(path: &Path) -> Result<Frozen, LoadError> {
+        let mut file = open_checked(path)?;
+        let len = usize::try_from(file.metadata()?.len())
+            .map_err(|_| bad("index file is too large for this platform"))?;
+        let mut backing = aligned_zeroed(len);
+        io::Read::read_exact(&mut file, owned_bytes_mut(&mut backing))?;
+        Frozen::validated(backing)
+    }
+
+    /// Lays out `view` in owned memory, in the file layout.
+    pub(crate) fn from_view<V: View>(view: &V, meta: &Meta) -> Frozen {
+        let header = layout_for(view, meta);
+        let mut backing = aligned_zeroed(header.file_len as usize);
+        let out = io::Cursor::new(owned_bytes_mut(&mut backing));
+        write_index(view, &header, out).expect("the buffer is sized for the index");
+        Frozen { backing, header }
+    }
+
+    fn validated(backing: Backing) -> Result<Frozen, LoadError> {
+        let bytes = bytes_of(&backing);
+        let header = Header::decode(&bytes[..HEADER_LEN.min(bytes.len())], bytes.len() as u64)?;
+        let frozen = Frozen { backing, header };
+        frozen.check_levels_and_offsets()?;
+        Ok(frozen)
+    }
+
+    pub fn is_mapped(&self) -> bool {
+        matches!(self.backing, Backing::Mapped(_))
     }
 
     pub(crate) fn header(&self) -> &Header {
@@ -359,9 +407,9 @@ impl Mapped {
 
     pub(crate) fn view(&self) -> FrozenView<'_> {
         let h = &self.header;
-        let m = &self.map[..];
-        // Alignment was checked at open (sections are 64-byte aligned, the
-        // map is page-aligned), so these casts cannot fail.
+        let m = bytes_of(&self.backing);
+        // Sections are 64-byte aligned and the memory starts on a page
+        // (mapped) or 64-byte (owned) boundary, so these casts cannot fail.
         let level0 = &m[range(h.level0)];
         FrozenView {
             header: h,
@@ -374,7 +422,26 @@ impl Mapped {
     }
 }
 
-/// Read access to a mapped index.
+fn bytes_of(backing: &Backing) -> &[u8] {
+    match backing {
+        Backing::Mapped(map) => map,
+        Backing::Owned { words, start, len } => &bytemuck::cast_slice(&words[*start..])[..*len],
+    }
+}
+
+fn open_checked(path: &Path) -> Result<File, LoadError> {
+    if cfg!(target_endian = "big") {
+        return Err(bad("rhnsw index files are little-endian; big-endian hosts are not supported"));
+    }
+    let file = File::open(path)?;
+    let len = file.metadata()?.len();
+    if len < HEADER_LEN as u64 {
+        return Err(bad(format!("file is {len} bytes, shorter than an rhnsw header")));
+    }
+    Ok(file)
+}
+
+/// Read access to a frozen index.
 pub(crate) struct FrozenView<'a> {
     header: &'a Header,
     levels: &'a [u8],
@@ -443,6 +510,12 @@ impl View for FrozenView<'_> {
     }
 }
 
+fn layout_for<V: View>(view: &V, meta: &Meta) -> Header {
+    let per_level = 1 + meta.m;
+    let upper_words: u64 = (0..view.len() as u32).map(|id| (view.level(id) * per_level) as u64).sum();
+    Header::layout(meta, view.len(), view.entry(), upper_words)
+}
+
 /// Writes `view` as an index file at `path`: to a temporary file in the same
 /// directory first, then renamed over `path`, so a process that has the old
 /// file mapped keeps a valid mapping.
@@ -450,59 +523,12 @@ pub(crate) fn save<V: View>(view: &V, meta: &Meta, path: &Path) -> io::Result<()
     if cfg!(target_endian = "big") {
         return Err(io::Error::other("saving is only supported on little-endian hosts"));
     }
-    let n = view.len();
-    let per_level = 1 + meta.m;
-    let upper_words: u64 = (0..n as u32).map(|id| (view.level(id) * per_level) as u64).sum();
-    let header = Header::layout(meta, n, view.entry(), upper_words);
-
+    let header = layout_for(view, meta);
     let tmp = temp_path(path);
     let result = (|| {
-        let mut w = Out { w: BufWriter::with_capacity(8 << 20, File::create(&tmp)?), pos: 0 };
-        w.write(&header.encode())?;
-        let levels: Vec<u8> = (0..n as u32).map(|id| view.level(id) as u8).collect();
-        w.write(&levels)?;
-        w.pad_to(header.upper_offset.offset)?;
-
-        let mut next = 0u64;
-        let mut offsets = Vec::with_capacity(n);
-        for &level in &levels {
-            offsets.push(if level > 0 { next } else { 0 });
-            next += (level as usize * per_level) as u64;
-        }
-        w.write(bytemuck::cast_slice(&offsets))?;
-        w.pad_to(header.upper.offset)?;
-
-        let mut words = vec![0u32; per_level];
-        for (id, &level) in levels.iter().enumerate() {
-            for l in 1..=level as usize {
-                words.fill(0);
-                let mut count = 0;
-                for nb in view.neighbors(id as u32, l) {
-                    count += 1;
-                    words[count] = nb;
-                }
-                words[0] = count as u32;
-                w.write(bytemuck::cast_slice(&words))?;
-            }
-        }
-        w.pad_to(header.level0.offset)?;
-
-        let mut block = vec![0u32; header.stride];
-        for id in 0..n as u32 {
-            block.fill(0);
-            let mut count = 0;
-            for nb in view.neighbors(id, 0) {
-                count += 1;
-                block[count] = nb;
-            }
-            block[0] = count as u32;
-            for (slot, x) in block[header.list_words..].iter_mut().zip(view.vector(id)) {
-                *slot = x.to_bits();
-            }
-            w.write(bytemuck::cast_slice(&block))?;
-        }
-        debug_assert_eq!(w.pos, header.file_len);
-        let file = w.w.into_inner().map_err(|e| e.into_error())?;
+        let mut file = BufWriter::with_capacity(8 << 20, File::create(&tmp)?);
+        write_index(view, &header, &mut file)?;
+        let file = file.into_inner().map_err(|e| e.into_error())?;
         file.sync_all()?;
         fs::rename(&tmp, path)
     })();
@@ -512,13 +538,65 @@ pub(crate) fn save<V: View>(view: &V, meta: &Meta, path: &Path) -> io::Result<()
     result
 }
 
-/// A buffered writer that tracks its position, for padding to section offsets.
-struct Out {
-    w: BufWriter<File>,
+/// Writes the whole index in the file layout described by `header`.
+fn write_index<V: View, W: Write>(view: &V, header: &Header, w: W) -> io::Result<()> {
+    let n = view.len();
+    let per_level = 1 + header.m;
+    let mut w = Out { w, pos: 0 };
+    w.write(&header.encode())?;
+    let levels: Vec<u8> = (0..n as u32).map(|id| view.level(id) as u8).collect();
+    w.write(&levels)?;
+    w.pad_to(header.upper_offset.offset)?;
+
+    let mut next = 0u64;
+    let mut offsets = Vec::with_capacity(n);
+    for &level in &levels {
+        offsets.push(if level > 0 { next } else { 0 });
+        next += (level as usize * per_level) as u64;
+    }
+    w.write(bytemuck::cast_slice(&offsets))?;
+    w.pad_to(header.upper.offset)?;
+
+    let mut words = vec![0u32; per_level];
+    for (id, &level) in levels.iter().enumerate() {
+        for l in 1..=level as usize {
+            words.fill(0);
+            let mut count = 0;
+            for nb in view.neighbors(id as u32, l) {
+                count += 1;
+                words[count] = nb;
+            }
+            words[0] = count as u32;
+            w.write(bytemuck::cast_slice(&words))?;
+        }
+    }
+    w.pad_to(header.level0.offset)?;
+
+    let mut block = vec![0u32; header.stride];
+    for id in 0..n as u32 {
+        block.fill(0);
+        let mut count = 0;
+        for nb in view.neighbors(id, 0) {
+            count += 1;
+            block[count] = nb;
+        }
+        block[0] = count as u32;
+        for (slot, x) in block[header.list_words..].iter_mut().zip(view.vector(id)) {
+            *slot = x.to_bits();
+        }
+        w.write(bytemuck::cast_slice(&block))?;
+    }
+    debug_assert_eq!(w.pos, header.file_len);
+    w.w.flush()
+}
+
+/// A writer that tracks its position, for padding to section offsets.
+struct Out<W: Write> {
+    w: W,
     pos: u64,
 }
 
-impl Out {
+impl<W: Write> Out<W> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.w.write_all(bytes)?;
         self.pos += bytes.len() as u64;

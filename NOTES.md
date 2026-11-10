@@ -178,10 +178,31 @@ Measured on SIFT 1M (results in `bench/results/saved_*.json`,
   GloVe-100.
 - 8 processes mapping the 684 MB file: summed PSS 909 MB (8 private copies:
   5,312 MB). Each process's RSS shows the whole file; its PSS share is 1/8.
-- Queries on the mapped index are 1.20 to 1.24x faster than on the in-memory
-  index (1.22 to 1.32x native NMSLIB), more than the ~5% estimated from the
-  phase 5 profile: with the interleaved layout the list of a node about to be
-  expanded is usually already in cache from computing that node's distance.
+- Queries on the mapped SIFT index were 1.20 to 1.24x faster than on the
+  in-memory build layout (1.22 to 1.32x native NMSLIB).
+- Built indexes now use the same layout in memory: each `add` ends by writing
+  the graph into an owned, 64-byte-aligned buffer in the file layout and
+  dropping the build structures ("freeze"); the next `add` converts back
+  ("thaw"). `load(mmap=False)` reads the file into such a buffer directly.
+  Cost: one extra copy per `add`; peak memory during a 1M build rises about
+  540 MB (1,859 to 2,401 MB on SIFT), and padding to whole cache lines makes
+  the index 9% (SIFT) to 18% (GloVe) larger.
+- Most of the gain is alignment, not interleaving. A controlled A/B on one
+  built index per dataset (`examples/query_profile.rs`, same process,
+  layouts switched in place) gave, against the unaligned build layout:
+
+  | dataset | build layout, vectors 64-byte aligned | frozen layout |
+  |---|---|---|
+  | SIFT 1M (L2) | 1.18 to 1.24x | 1.25 to 1.29x |
+  | SIFT 100k (L2) | 1.16 to 1.26x | 1.22 to 1.29x |
+  | GloVe 1.18M (cosine) | 1.04 to 1.05x | 1.05 to 1.07x |
+  | GloVe 100k (cosine) | 0.96 to 1.05x | 0.92 to 1.00x |
+
+  A 512-byte SIFT vector is exactly 8 cache lines, but the build layout's
+  vector array starts 16 bytes past a line boundary, so every vector spans 9
+  lines. GloVe's 400-byte vectors never fill whole lines, so alignment helps
+  little, and the frozen layout's padding (400 to 448 bytes per vector) makes
+  a 100k index that nearly fits in cache a little slower.
 - A cold mapped index (file evicted from the page cache) is about 10x slower
   for its first thousand queries (1.2 s against 0.12 s warm at efSearch 80),
   then matches the warm numbers.
