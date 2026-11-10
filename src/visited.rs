@@ -2,12 +2,15 @@
 //!
 //! Marking a node stores the current generation in its slot, and starting a
 //! new search bumps the generation, so clearing costs nothing per call. The
-//! array is only rewritten when the generation counter wraps.
+//! array is only rewritten when the generation counter wraps (every 255
+//! searches). One byte per node keeps the array small enough to stay closer
+//! to the core (1 MB per thread at 1M nodes); graph search hits it randomly
+//! for every neighbor.
 
 #[derive(Default)]
 pub struct VisitedSet {
-    marks: Vec<u16>,
-    generation: u16,
+    marks: Vec<u8>,
+    generation: u8,
 }
 
 impl VisitedSet {
@@ -40,6 +43,13 @@ impl VisitedSet {
         fresh
     }
 
+    /// The memory holding `id`'s mark, for prefetching.
+    #[inline]
+    pub fn slot_memory(&self, id: u32) -> &[u8] {
+        let i = id as usize;
+        &self.marks[i..i + 1]
+    }
+
     #[inline]
     pub fn contains(&self, id: u32) -> bool {
         self.marks[id as usize] == self.generation
@@ -68,7 +78,7 @@ mod tests {
         let mut v = VisitedSet::new(3);
         v.clear();
         v.insert(0);
-        for _ in 0..u16::MAX as usize + 5 {
+        for _ in 0..u8::MAX as usize * 3 + 5 {
             v.clear();
             assert!(!v.contains(0));
             assert!(!v.contains(1));

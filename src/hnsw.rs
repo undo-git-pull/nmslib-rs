@@ -30,7 +30,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
-use crate::simd::{dot_in, l2_sq_in};
+use crate::simd::{dot_in, l2_sq_in, prefetch_in};
 use crate::visited::VisitedSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,6 +172,11 @@ impl Graph {
         }
     }
 
+    /// The memory holding a node's list, for prefetching.
+    pub(crate) fn list_memory(&self, id: u32, level: usize) -> &[AtomicU32] {
+        self.block(id, level)
+    }
+
     pub(crate) fn cap(&self, level: usize) -> usize {
         if level == 0 { self.max_m0 } else { self.max_m }
     }
@@ -236,6 +241,8 @@ struct SearchBuffers {
     visited: VisitedSet,
     candidates: BinaryHeap<Reverse<Cand>>,
     results: BinaryHeap<Cand>,
+    /// Unvisited neighbors of the node being expanded.
+    fresh: Vec<u32>,
 }
 
 /// Buffers for neighbor selection and linking.
@@ -257,6 +264,17 @@ struct Scratch {
     selected: Vec<Cand>,
     link: LinkBuffers,
     query: Vec<f32>,
+}
+
+/// Work done by queries, with the `counters` feature.
+#[cfg(feature = "counters")]
+pub mod counters {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+    pub static DISTANCES: AtomicU64 = AtomicU64::new(0);
+    pub static EXPANSIONS: AtomicU64 = AtomicU64::new(0);
+    pub fn take() -> (u64, u64) {
+        (DISTANCES.swap(0, Relaxed), EXPANSIONS.swap(0, Relaxed))
+    }
 }
 
 /// Scratch buffers shared by builds and queries, checked out per thread.
@@ -685,20 +703,41 @@ fn search_layer<S: Simd>(
     simd.vectorize(
         #[inline(always)]
         || {
-            let SearchBuffers { visited, candidates, results } = buf;
+            let SearchBuffers { visited, candidates, results, fresh } = buf;
             visited.clear();
             visited.insert(ep.id);
             candidates.clear();
             results.clear();
             candidates.push(Reverse(ep));
             results.push(ep);
+            #[cfg(feature = "counters")]
+            let (mut n_dist, mut n_exp) = (0u64, 0u64);
             while let Some(Reverse(c)) = candidates.pop() {
                 if c.dist > results.peek().unwrap().dist {
                     break;
                 }
-                for nb in graph.neighbors(c.id, level) {
-                    if !visited.insert(nb) {
-                        continue;
+                #[cfg(feature = "counters")]
+                {
+                    n_exp += 1;
+                }
+                // Mark and prefetch all unvisited neighbors first, then
+                // compute distances, so their cache misses overlap.
+                fresh.clear();
+                fresh.extend(graph.neighbors(c.id, level));
+                for &nb in fresh.iter() {
+                    prefetch_in(simd, visited.slot_memory(nb));
+                }
+                fresh.retain(|&nb| {
+                    let new = visited.insert(nb);
+                    if new {
+                        prefetch_in(simd, store.vector(nb));
+                    }
+                    new
+                });
+                for &nb in fresh.iter() {
+                    #[cfg(feature = "counters")]
+                    {
+                        n_dist += 1;
                     }
                     let d = store.dist(simd, q, nb);
                     if results.len() < ef || d < results.peek().unwrap().dist {
@@ -710,6 +749,15 @@ fn search_layer<S: Simd>(
                         }
                     }
                 }
+                // Start loading the list of the node expanded next.
+                if let Some(Reverse(next)) = candidates.peek() {
+                    prefetch_in(simd, graph.list_memory(next.id, level));
+                }
+            }
+            #[cfg(feature = "counters")]
+            if level == 0 {
+                counters::DISTANCES.fetch_add(n_dist, std::sync::atomic::Ordering::Relaxed);
+                counters::EXPANSIONS.fetch_add(n_exp, std::sync::atomic::Ordering::Relaxed);
             }
             out.clear();
             out.extend(results.drain());

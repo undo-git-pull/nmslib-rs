@@ -129,3 +129,33 @@ call.
 - Implement `post = 2`: second reverse-order build plus heuristic-1 merge of
   level 0. Without it, recall at a given `ef` will sit below the baseline.
 - Strict `<` / `>` comparisons as above, entry point = closest selected.
+
+## Query performance (rhnsw vs NMSLIB built with -march=native)
+
+Profiled on SIFT 1M (AMD Threadripper 7970X: 1 MB L2 per core, 32 MB L3
+per 8-core cluster) with `examples/query_profile.rs` and the `counters`
+feature. `perf` was unavailable (no tools for the running kernel,
+`perf_event_paranoid = 4`), so the profile is work counts plus timings:
+
+- A cold distance cost about 95 ns; the same query repeated (cache-hot)
+  cost 15 to 21 ns per distance. About 75% of query time was memory stalls:
+  each neighbor's 512-byte vector is a cache miss, taken one after another.
+- At 100k the vectors fit in L3, which is why rhnsw matched NMSLIB there but
+  fell 5 to 14% behind at 1M.
+
+NMSLIB's optimized search prefetches neighbor vectors, the visited-array
+slots, and the next node's link list. rhnsw now does the same, in safe code
+through a fearless_simd `kernel!` with an `Sse2` token (a no-op on ARM,
+where the prefetch intrinsic is not stable):
+
+1. Prefetch the first line of every unvisited neighbor's vector before
+   computing any distance (one line beat 2, 4 and 8).
+2. Prefetch the next candidate's level-0 list.
+3. Shrink visited marks from u16 to u8 (1 MB per thread at 1M) and prefetch
+   the marks of all neighbors before checking them.
+
+Single-thread QPS vs native NMSLIB went from 0.86 to 0.95x to 0.99 to 1.07x
+on 1M, and 1.10 to 1.22x on 100k. Not done: NMSLIB also stores each node's
+level-0 links next to its vector. That would save one miss per expansion
+(about 5% at efSearch 80), but needs a second, frozen layout for queries to
+stay in safe Rust, since the build's lists are atomics.

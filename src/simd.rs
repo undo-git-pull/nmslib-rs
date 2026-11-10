@@ -81,6 +81,34 @@ fn reduce<S: Simd>(
     total.reduce_sum() + tail
 }
 
+/// Hints the CPU to start loading the first cache line of `data`. Graph
+/// search issues this for every neighbor before computing any distance, so
+/// the memory misses overlap instead of happening one by one; one line per
+/// vector measured best (the hardware fetches the following lines). A no-op
+/// where no prefetch instruction is available through safe code.
+#[inline(always)]
+pub fn prefetch_in<S: Simd, T>(simd: S, data: &[T]) {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if let Some(sse2) = simd.level().as_sse2() {
+        prefetch_sse2(sse2, data.as_ptr().cast());
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let _ = (simd, data);
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fearless_simd::kernel!(
+    #[inline(always)]
+    fn prefetch_sse2(sse2: Sse2, ptr: *const i8) {
+        #[cfg(target_arch = "x86")]
+        use core::arch::x86::{_MM_HINT_T0, _mm_prefetch};
+        #[cfg(target_arch = "x86_64")]
+        use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
+        let _ = sse2;
+        _mm_prefetch::<_MM_HINT_T0>(ptr);
+    }
+);
+
 /// Name of the SIMD level `Level::new()` selects on this machine.
 pub fn selected_level_name() -> &'static str {
     let level = Level::new();

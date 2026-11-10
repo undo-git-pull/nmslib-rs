@@ -15,6 +15,10 @@ numpy = "0.30"
 rand = "0.10"
 rayon = "1.12"
 
+[features]
+# Count distance computations and node expansions in queries (profiling only).
+counters = []
+
 [dev-dependencies]
 criterion = "0.8"
 proptest = "1.12"
