@@ -87,6 +87,22 @@ not refill, an overflowing list can shrink well below the cap.
 
 So a `post = 2` build costs about two plain builds plus the merge.
 
+## Parallel build (`ParallelFor`, `include/thread_pool.h`)
+
+Worker threads take the next id from one shared atomic counter
+(`current.fetch_add(1)`), so the graph grows in nearly insertion order: at
+any moment it holds ids `0..t` minus at most `indexThreadQty` in flight. The
+`post = 2` reverse build is scheduled the same way. During construction a
+search locks each node while reading its neighbor list. Only an insert whose
+level exceeds `maxlevel_` takes `MaxLevelGuard_`, held until that insert ends.
+
+rhnsw matches the shared-counter scheduling. Splitting the order into
+per-thread chunks (rayon's default `par_iter`) grows many parts of the order
+at once; on SIFT 100k with 32 threads that dropped mean level-0 degree from
+28.04 to 27.45 and recall at `efSearch = 10` by 0.5 points. rhnsw reads
+neighbor lists without locking (lists are atomics; a racing reader sees a
+valid old or partly rewritten list), which did not change degree or recall.
+
 ## Query (`V1Merge`, `ef < 1000`)
 
 1. Greedy descent from the entry point through levels `maxlevel .. 1`, moving

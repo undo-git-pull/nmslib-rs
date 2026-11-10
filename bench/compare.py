@@ -37,9 +37,10 @@ def main() -> None:
     def builds_line(name: str, r: dict) -> str:
         t = np.mean([b["build_time_s"] for b in r["builds"]])
         mem = np.mean([b["memory"]["index_mb"] for b in r["builds"]])
+        peak = np.mean([b["memory"]["peak_rss_build_mb"] for b in r["builds"]])
         threads = r["params"].get("indexThreadQty", r["params"].get("build_threads"))
         return (f"{name:<7} {len(r['builds']):>2} builds  build {t:7.1f} s on {threads} thread(s)"
-                f"  index memory {mem:7.1f} MB")
+                f"  index memory {mem:7.1f} MB  peak RSS {peak:7.1f} MB")
 
     print(f"SIFT {args.size}, recall@10 (mean over builds), queries on 1 thread")
     print(builds_line("nmslib", ref))
