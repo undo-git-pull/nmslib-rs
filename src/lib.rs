@@ -73,10 +73,18 @@ mod rhnsw {
         }
 
         /// Adds vectors, a C-contiguous float32 array of shape (n, dim).
-        fn add_items(&mut self, py: Python<'_>, vectors: &Bound<'_, PyAny>) -> PyResult<()> {
+        /// `num_threads`: 0 uses all cores; 1 is the sequential build, which
+        /// gives the same graph for the same seed.
+        #[pyo3(signature = (vectors, num_threads = 0))]
+        fn add_items(
+            &mut self,
+            py: Python<'_>,
+            vectors: &Bound<'_, PyAny>,
+            num_threads: usize,
+        ) -> PyResult<()> {
             let (_, data) = copy_matrix(vectors, self.inner.dim(), "vectors")?;
             let inner = &mut self.inner;
-            py.detach(|| inner.add(&data));
+            py.detach(|| inner.add_vec(data, num_threads));
             Ok(())
         }
 
@@ -91,29 +99,25 @@ mod rhnsw {
 
         /// Returns (labels, distances), each of shape (n_queries, k), nearest
         /// first. Labels are int64; when the index holds fewer than k vectors
-        /// the missing entries are -1 with distance inf.
-        #[pyo3(signature = (queries, k = 10))]
+        /// the missing entries are -1 with distance inf. `num_threads`: 0 uses
+        /// all cores. Several Python threads may query the same index at once.
+        #[pyo3(signature = (queries, k = 10, num_threads = 0))]
         fn knn_query<'py>(
-            &mut self,
+            &self,
             py: Python<'py>,
             queries: &Bound<'py, PyAny>,
             k: usize,
+            num_threads: usize,
         ) -> PyResult<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<f32>>)> {
             if k == 0 {
                 return Err(PyValueError::new_err("k must be positive"));
             }
-            let dim = self.inner.dim();
-            let (nq, data) = copy_matrix(queries, dim, "queries")?;
-            let (ef, inner) = (self.ef, &mut self.inner);
+            let (nq, data) = copy_matrix(queries, self.inner.dim(), "queries")?;
+            let (ef, inner) = (self.ef, &self.inner);
             let (labels, dists) = py.detach(|| {
                 let mut labels = vec![-1i64; nq * k];
                 let mut dists = vec![f32::INFINITY; nq * k];
-                for (i, q) in data.chunks_exact(dim).enumerate() {
-                    for (j, (id, d)) in inner.knn_query(q, k, ef).into_iter().enumerate() {
-                        labels[i * k + j] = id as i64;
-                        dists[i * k + j] = d;
-                    }
-                }
+                inner.knn_query_batch(&data, k, ef, num_threads, &mut labels, &mut dists);
                 (labels, dists)
             });
             let labels = Array2::from_shape_vec((nq, k), labels).expect("shape matches");

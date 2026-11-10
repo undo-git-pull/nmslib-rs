@@ -4,6 +4,7 @@
 //! new search bumps the generation, so clearing costs nothing per call. The
 //! array is only rewritten when the generation counter wraps.
 
+#[derive(Default)]
 pub struct VisitedSet {
     marks: Vec<u16>,
     generation: u16,

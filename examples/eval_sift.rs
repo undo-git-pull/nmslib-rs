@@ -5,7 +5,7 @@
 //! Input files are written by bench/eval_rust.py: a little-endian header of
 //! two u32 (rows, dim) followed by row-major f32.
 //!
-//!     cargo run --release --example eval_sift -- <base.f32> <queries.f32> <out_dir> <order_seed>
+//!     cargo run --release --example eval_sift -- <base.f32> <queries.f32> <out_dir> <order_seed> [threads]
 //!
 //! `order_seed` 0 inserts in file order; otherwise the insertion order is a
 //! seeded shuffle and ids are mapped back to file rows in the output.
@@ -35,7 +35,11 @@ fn read_matrix(path: &Path) -> (usize, usize, Vec<f32>) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    assert!(args.len() == 5, "usage: eval_sift <base.f32> <queries.f32> <out_dir> <order_seed>");
+    assert!(
+        args.len() == 5 || args.len() == 6,
+        "usage: eval_sift <base.f32> <queries.f32> <out_dir> <order_seed> [threads]"
+    );
+    let threads: usize = args.get(5).map_or(1, |t| t.parse().expect("threads must be an integer"));
     let (n, dim, base) = read_matrix(Path::new(&args[1]));
     let (nq, qdim, queries) = read_matrix(Path::new(&args[2]));
     assert_eq!(dim, qdim);
@@ -56,7 +60,7 @@ fn main() {
     let params = Params { seed, ..Params::default() };
     let mut index = Hnsw::new(dim, Space::L2, params.clone());
     let t0 = Instant::now();
-    index.add(&shuffled);
+    index.add_vec(shuffled, threads);
     let build_s = t0.elapsed().as_secs_f64();
     let stats = index.stats();
     eprintln!("[seed {seed}] build {build_s:.1}s, levels {:?}", stats.nodes_per_level);
@@ -82,7 +86,7 @@ fn main() {
 
     let json = format!(
         "{{\"insertion_order_seed\": {seed}, \"build_time_s\": {build_s:.2}, \
-         \"build_threads\": 1, \"params\": {{\"M\": {}, \"efConstruction\": {}, \"post\": {}}}, \
+         \"build_threads\": {threads}, \"params\": {{\"M\": {}, \"efConstruction\": {}, \"post\": {}}}, \
          \"simd_level\": \"{}\", \"nodes_per_level\": {:?}, \"mean_degree\": [{}], \"sweep\": [{}]}}",
         params.m,
         params.ef_construction,

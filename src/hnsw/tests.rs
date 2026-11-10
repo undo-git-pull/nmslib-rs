@@ -29,29 +29,28 @@ fn brute_force(data: &[f32], dim: usize, q: &[f32], k: usize) -> Vec<u32> {
 fn path_graph() -> (Store, Graph) {
     let store = store_1d(&[0.0, 1.0, 2.0, 3.0, 4.0]);
     let mut g = Graph::new(2, 4);
-    g.reserve_nodes(5);
-    for id in 0..5 {
-        g.init_node(id, 0);
-    }
+    g.grow(&[0; 5]);
     for id in 0..4u32 {
         g.push_neighbor(id, 0, id + 1);
         g.push_neighbor(id + 1, 0, id);
     }
-    g.entry = Some(0);
+    g.set_entry(0, 0);
     (store, g)
 }
 
 #[test]
 fn hand_built_graph_search() {
     let (store, g) = path_graph();
-    let mut visited = VisitedSet::new(5);
+    let mut buf = SearchBuffers::default();
+    buf.visited.ensure_capacity(5);
+    let mut found = Vec::new();
     dispatch!(Level::new(), simd => {
         let q = [3.9f32];
         let ep = Cand { dist: store.dist(simd, &q, 0), id: 0 };
         // ef = 1 is a greedy walk along the path to the nearest point.
-        let found = search_layer(simd, &store, &g, &mut visited, &q, ep, 1, 0);
+        search_layer(simd, &store, &g, &mut buf, &q, ep, 1, 0, &mut found);
         assert_eq!(found.iter().map(|c| c.id).collect::<Vec<_>>(), [4]);
-        let found = search_layer(simd, &store, &g, &mut visited, &q, ep, 3, 0);
+        search_layer(simd, &store, &g, &mut buf, &q, ep, 3, 0, &mut found);
         assert_eq!(found.iter().map(|c| c.id).collect::<Vec<_>>(), [4, 3, 2]);
         assert!(found.windows(2).all(|w| w[0].dist <= w[1].dist));
         assert_eq!(greedy(simd, &store, &g, &q, ep, 0).id, 4);
@@ -69,15 +68,15 @@ fn heuristic_keeps_diverse_neighbors() {
         c.sort_unstable();
         c
     };
-    let mut out = Vec::new();
+    let (mut out, mut rej) = (Vec::new(), Vec::new());
     dispatch!(Level::new(), simd => {
-        select_neighbors(simd, &store, &cands(&[1, 2, 3]), 3, false, &mut out);
+        select_neighbors(simd, &store, &cands(&[1, 2, 3]), 3, false, &mut out, &mut rej);
         assert_eq!(out.iter().map(|c| c.id).collect::<Vec<_>>(), [1, 3]);
         // Refill brings back the pruned candidate.
-        select_neighbors(simd, &store, &cands(&[1, 2, 3]), 3, true, &mut out);
+        select_neighbors(simd, &store, &cands(&[1, 2, 3]), 3, true, &mut out, &mut rej);
         assert_eq!(out.iter().map(|c| c.id).collect::<Vec<_>>(), [1, 3, 2]);
         // Fewer candidates than requested: returned unchanged, no pruning.
-        select_neighbors(simd, &store, &cands(&[1, 2]), 3, false, &mut out);
+        select_neighbors(simd, &store, &cands(&[1, 2]), 3, false, &mut out, &mut rej);
         assert_eq!(out.iter().map(|c| c.id).collect::<Vec<_>>(), [1, 2]);
     });
 }
@@ -88,24 +87,31 @@ fn overflow_reprunes_without_refill() {
     // which sits behind 1, prunes 3 and keeps the list at [1, 2].
     let store = store_1d(&[0.0, 1.0, -1.0, 1.5]);
     let mut g = Graph::new(1, 2);
-    g.reserve_nodes(4);
-    for id in 0..4 {
-        g.init_node(id, 0);
-    }
+    g.grow(&[0; 4]);
     g.push_neighbor(0, 0, 1);
     g.push_neighbor(0, 0, 2);
     dispatch!(Level::new(), simd => {
-        add_link(simd, &store, &mut g, 0, 3, 0);
-        let mut nbs = g.neighbors(0, 0).to_vec();
+        let mut buf = LinkBuffers::default();
+        add_link(simd, &store, &g, 0, 3, 0, &mut buf);
+        let mut nbs = g.neighbor_vec(0, 0);
         nbs.sort();
         assert_eq!(nbs, [1, 2]);
         // Duplicates are refused.
-        add_link(simd, &store, &mut g, 0, 1, 0);
-        assert_eq!(g.neighbors(0, 0).len(), 2);
+        add_link(simd, &store, &g, 0, 1, 0, &mut buf);
+        assert_eq!(g.neighbor_vec(0, 0).len(), 2);
     });
 }
 
 fn check_invariants(index: &Hnsw) {
+    check_invariants_allowing(index, 0.0);
+}
+
+/// Structural checks. `max_unreachable` is the fraction of nodes allowed to be
+/// unreachable from the entry point at level 0. It is 0 for sequential builds
+/// and post-merged builds. A parallel build without `post` can strand a few
+/// nodes: nodes inserted at the same time do not see each other, and later
+/// pruning can drop every edge into one of them (see diag_unreachable_by_threads).
+fn check_invariants_allowing(index: &Hnsw, max_unreachable: f64) {
     let g = index.graph();
     let n = index.len() as u32;
     let entry = g.entry().expect("non-empty index has an entry point");
@@ -113,11 +119,11 @@ fn check_invariants(index: &Hnsw) {
     for id in 0..n {
         assert!(g.level(id) <= g.max_level());
         for level in 0..=g.level(id) {
-            let nbs = g.neighbors(id, level);
+            let nbs = g.neighbor_vec(id, level);
             assert!(nbs.len() <= g.cap(level), "node {id} level {level} degree {}", nbs.len());
             let unique: HashSet<_> = nbs.iter().collect();
             assert_eq!(unique.len(), nbs.len(), "duplicate edge at node {id} level {level}");
-            for &nb in nbs {
+            for &nb in &nbs {
                 assert_ne!(nb, id, "self-loop at node {id} level {level}");
                 assert!(nb < n);
                 assert!(g.level(nb) >= level, "edge {id}->{nb} at level {level} above {nb}'s level");
@@ -129,22 +135,29 @@ fn check_invariants(index: &Hnsw) {
     let mut queue = VecDeque::from([entry]);
     seen[entry as usize] = true;
     while let Some(id) = queue.pop_front() {
-        for &nb in g.neighbors(id, 0) {
+        for nb in g.neighbors(id, 0) {
             if !std::mem::replace(&mut seen[nb as usize], true) {
                 queue.push_back(nb);
             }
         }
     }
     let unreached = seen.iter().filter(|s| !**s).count();
-    assert_eq!(unreached, 0, "{unreached} nodes unreachable at level 0");
+    assert!(
+        unreached as f64 <= max_unreachable * n as f64,
+        "{unreached} of {n} nodes unreachable at level 0"
+    );
 }
 
-fn build(n: usize, dim: usize, post: bool) -> (Vec<f32>, Hnsw) {
+fn build_threads(n: usize, dim: usize, post: bool, threads: usize) -> (Vec<f32>, Hnsw) {
     let data = random_data(n, dim, 5);
     let params = Params { m: 16, ef_construction: 100, post, seed: 9 };
     let mut index = Hnsw::new(dim, Space::L2, params);
-    index.add(&data);
+    index.add(&data, threads);
     (data, index)
+}
+
+fn build(n: usize, dim: usize, post: bool) -> (Vec<f32>, Hnsw) {
+    build_threads(n, dim, post, 1)
 }
 
 #[test]
@@ -163,11 +176,15 @@ fn invariants_hold_after_10k_inserts_with_post() {
 #[test]
 fn recall_at_10_above_0_99_on_10k() {
     let dim = 16;
-    let (data, mut index) = build(10_000, dim, true);
+    let (data, index) = build(10_000, dim, true);
+    assert_recall(&data, &index, dim);
+}
+
+fn assert_recall(data: &[f32], index: &Hnsw, dim: usize) {
     let queries = random_data(200, dim, 77);
     let mut hits = 0;
     for q in queries.chunks_exact(dim) {
-        let truth: HashSet<u32> = brute_force(&data, dim, q, 10).into_iter().collect();
+        let truth: HashSet<u32> = brute_force(data, dim, q, 10).into_iter().collect();
         let found = index.knn_query(q, 10, 200);
         assert_eq!(found.len(), 10);
         assert!(found.windows(2).all(|w| w[0].1 <= w[1].1));
@@ -186,7 +203,7 @@ fn same_seed_same_graph() {
     for id in 0..2_000 {
         assert_eq!(ga.level(id), gb.level(id));
         for level in 0..=ga.level(id) {
-            assert_eq!(ga.neighbors(id, level), gb.neighbors(id, level));
+            assert_eq!(ga.neighbor_vec(id, level), gb.neighbor_vec(id, level));
         }
     }
 }
@@ -204,9 +221,9 @@ fn level_distribution_matches_ml() {
 fn small_and_empty_indexes() {
     let mut index = Hnsw::new(3, Space::L2, Params::default());
     assert!(index.knn_query(&[0.0, 0.0, 0.0], 5, 10).is_empty());
-    index.add(&[1.0, 0.0, 0.0]);
+    index.add(&[1.0, 0.0, 0.0], 1);
     assert_eq!(index.knn_query(&[0.0, 0.0, 0.0], 5, 10), [(0, 1.0)]);
-    index.add(&[0.0, 2.0, 0.0, 0.0, 0.0, 0.5]);
+    index.add(&[0.0, 2.0, 0.0, 0.0, 0.0, 0.5], 4);
     let ids: Vec<u32> = index.knn_query(&[0.0, 0.0, 0.0], 5, 10).iter().map(|r| r.0).collect();
     assert_eq!(ids, [2, 0, 1]);
 }
@@ -214,10 +231,127 @@ fn small_and_empty_indexes() {
 #[test]
 fn cosine_ignores_magnitude() {
     let mut index = Hnsw::new(2, Space::Cosine, Params::default());
-    index.add(&[10.0, 0.0, 0.0, 3.0, 1.0, 1.0]);
+    index.add(&[10.0, 0.0, 0.0, 3.0, 1.0, 1.0], 1);
     let found = index.knn_query(&[0.5, 0.0], 3, 10);
     assert_eq!(found[0].0, 0);
     assert!(found[0].1.abs() < 1e-3);
     assert_eq!(found[1].0, 2);
     assert!((found[2].1 - 1.0).abs() < 1e-3, "orthogonal vector has distance 1");
+}
+
+#[test]
+fn parallel_build_invariants_and_recall() {
+    for post in [false, true] {
+        let (data, index) = build_threads(10_000, 16, post, 8);
+        check_invariants_allowing(&index, if post { 0.0 } else { 0.01 });
+        assert_recall(&data, &index, 16);
+    }
+}
+
+#[test]
+fn parallel_build_with_all_cores_and_incremental_add() {
+    let dim = 16;
+    let data = random_data(12_000, dim, 21);
+    let mut index = Hnsw::new(dim, Space::L2, Params { ef_construction: 100, ..Params::default() });
+    index.add(&data[..6_000 * dim], 0);
+    index.add(&data[6_000 * dim..], 0);
+    assert_eq!(index.len(), 12_000);
+    // The second add runs without post.
+    check_invariants_allowing(&index, 0.01);
+    assert_recall(&data, &index, dim);
+}
+
+#[test]
+fn batch_query_matches_single_queries() {
+    let dim = 16;
+    let (_, index) = build_threads(5_000, dim, true, 8);
+    let queries = random_data(300, dim, 31);
+    let k = 10;
+    for threads in [1, 4, 0] {
+        let mut labels = vec![0i64; 300 * k];
+        let mut dists = vec![0f32; 300 * k];
+        index.knn_query_batch(&queries, k, 50, threads, &mut labels, &mut dists);
+        for (i, q) in queries.chunks_exact(dim).enumerate() {
+            let single = index.knn_query(q, k, 50);
+            let ids: Vec<i64> = single.iter().map(|r| r.0 as i64).collect();
+            assert_eq!(&labels[i * k..(i + 1) * k], &ids[..], "query {i}, threads {threads}");
+        }
+    }
+}
+
+#[test]
+fn batch_query_pads_missing_results() {
+    let mut index = Hnsw::new(2, Space::L2, Params::default());
+    index.add(&[0.0, 0.0, 1.0, 1.0], 1);
+    let mut labels = vec![0i64; 2 * 3];
+    let mut dists = vec![0f32; 2 * 3];
+    index.knn_query_batch(&[0.0, 0.0, 1.0, 1.0], 3, 10, 2, &mut labels, &mut dists);
+    assert_eq!(labels, [0, 1, -1, 1, 0, -1]);
+    assert!(dists[2].is_infinite() && dists[5].is_infinite());
+}
+
+#[test]
+fn concurrent_queries_from_many_threads() {
+    let dim = 16;
+    let (_, index) = build_threads(5_000, dim, false, 8);
+    let queries = random_data(400, dim, 41);
+    let expected: Vec<_> = queries.chunks_exact(dim).map(|q| index.knn_query(q, 10, 40)).collect();
+    std::thread::scope(|s| {
+        for t in 0..8 {
+            let (index, queries, expected) = (&index, &queries, &expected);
+            s.spawn(move || {
+                for (i, q) in queries.chunks_exact(dim).enumerate().skip(t).step_by(8) {
+                    assert_eq!(index.knn_query(q, 10, 40), expected[i]);
+                }
+            });
+        }
+    });
+}
+
+/// Diagnostic, not a gate: unreachable level-0 nodes by thread count.
+#[test]
+#[ignore]
+fn diag_unreachable_by_threads() {
+    for threads in [1, 2, 8, 32] {
+        for post in [false, true] {
+            let (data, index) = build_threads(20_000, 16, post, threads);
+            let g = index.graph();
+            let n = index.len() as u32;
+            let mut indeg = vec![0u32; n as usize];
+            for id in 0..n {
+                for nb in g.neighbors(id, 0) {
+                    indeg[nb as usize] += 1;
+                }
+            }
+            let mut seen = vec![false; n as usize];
+            let entry = g.entry().unwrap();
+            let mut queue = VecDeque::from([entry]);
+            seen[entry as usize] = true;
+            while let Some(id) = queue.pop_front() {
+                for nb in g.neighbors(id, 0) {
+                    if !std::mem::replace(&mut seen[nb as usize], true) {
+                        queue.push_back(nb);
+                    }
+                }
+            }
+            let orphans: Vec<u32> = (0..n).filter(|&i| !seen[i as usize]).collect();
+            let zero_in = orphans.iter().filter(|&&i| indeg[i as usize] == 0).count();
+            let out_ok = orphans.iter().all(|&i| g.neighbors(i, 0).count() > 0);
+            // Nearest other node for each orphan, and whether the orphan links to it.
+            let mut near_links = 0;
+            for &o in &orphans {
+                let q = &data[o as usize * 16..(o as usize + 1) * 16];
+                let nn = brute_force(&data, 16, q, 2)[1];
+                if g.neighbors(nn, 0).any(|x| x == o) {
+                    near_links += 1;
+                }
+            }
+            println!(
+                "threads {threads:2} post {post:5}: unreachable {:3}, of which zero in-degree {:3}, \
+                 all have out-edges {out_ok}, nearest neighbor links back {near_links}",
+                orphans.len(),
+                zero_in
+            );
+        }
+    }
 }

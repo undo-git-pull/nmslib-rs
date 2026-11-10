@@ -776,6 +776,7 @@ dependencies = [
  "proptest",
  "pyo3",
  "rand",
+ "rayon",
 ]
 
 [[package]]

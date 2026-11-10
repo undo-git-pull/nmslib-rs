@@ -140,10 +140,63 @@ def test_releases_gil_during_build():
     t = threading.Thread(target=count)
     t.start()
     start = time.perf_counter()
-    index.add_items(data)
+    index.add_items(data, num_threads=1)  # sequential, so the build takes a while
     elapsed = time.perf_counter() - start
     done.set()
     t.join()
     # With the GIL held the counter could not advance at all during the build.
     assert elapsed > 0.2
     assert ticks > 0.2 * elapsed / 0.001
+
+
+def test_parallel_query_matches_single_thread(built):
+    _, index = built
+    queries = random(500, 16, 6)
+    index.set_ef(40)
+    l1, d1 = index.knn_query(queries, k=10, num_threads=1)
+    for threads in (0, 4):
+        lp, dp = index.knn_query(queries, k=10, num_threads=threads)
+        assert (lp == l1).all() and (dp == d1).all()
+
+
+def test_parallel_build_recall():
+    data = random(5000, 16, 7)
+    index = rhnsw.Index(dim=16, ef_construction=100)
+    index.add_items(data, num_threads=8)
+    index.set_ef(200)
+    queries = random(100, 16, 8)
+    labels, _ = index.knn_query(queries, k=10)
+    truth = brute_force(data, queries, 10)
+    assert np.mean([len(set(a) & set(b)) / 10 for a, b in zip(labels, truth)]) > 0.99
+
+
+def test_sequential_build_is_deterministic():
+    data = random(2000, 8, 9)
+    results = []
+    for _ in range(2):
+        index = rhnsw.Index(dim=8, seed=3)
+        index.add_items(data, num_threads=1)
+        results.append(index.knn_query(data[:50], k=5, num_threads=1)[0])
+    assert (results[0] == results[1]).all()
+
+
+def test_concurrent_python_threads_share_an_index(built):
+    _, index = built
+    queries = random(200, 16, 10)
+    index.set_ef(40)
+    expected, _ = index.knn_query(queries, k=10, num_threads=1)
+    errors, results = [], [None] * 8
+
+    def worker(i):
+        try:
+            results[i] = index.knn_query(queries, k=10, num_threads=1)[0]
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert all((r == expected).all() for r in results)

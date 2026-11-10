@@ -20,7 +20,7 @@ import numpy as np
 import common
 
 
-def run_build(n: int, seed: int) -> dict:
+def run_build(n: int, seed: int, threads: int) -> dict:
     import rhnsw
 
     base, queries = common.load_sift(n)
@@ -33,7 +33,7 @@ def run_build(n: int, seed: int) -> dict:
     common.reset_peak_rss()
     before = common.rss_mb()
     t0 = time.perf_counter()
-    index.add_items(shuffled)
+    index.add_items(shuffled, num_threads=threads)
     build_time = time.perf_counter() - t0
     after_build = common.rss_mb()
     print(f"[seed {seed}] build {build_time:.1f}s", file=sys.stderr, flush=True)
@@ -43,7 +43,7 @@ def run_build(n: int, seed: int) -> dict:
         index.set_ef(ef)
         common.reset_peak_rss()
         t0 = time.perf_counter()
-        labels, _ = index.knn_query(queries, k=common.K)
+        labels, _ = index.knn_query(queries, k=common.K, num_threads=1)
         elapsed = time.perf_counter() - t0
         found = np.where(labels >= 0, order[np.maximum(labels, 0)], -1)
         r = common.recall(base, queries, gt, found)
@@ -75,6 +75,8 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=100_000, help="base vectors (prefix of SIFT1M)")
     ap.add_argument("--builds", type=int, default=3,
                     help="independent builds (insertion-order seeds 1..N)")
+    ap.add_argument("--threads", type=int, default=32,
+                    help="build threads (NMSLIB baseline uses indexThreadQty=32; 1 = sequential)")
     ap.add_argument("--out", help="output JSON (default bench/results/rhnsw_<n>.json)")
     args = ap.parse_args()
 
@@ -88,7 +90,7 @@ def main() -> None:
     builds = []
     for seed in range(1, args.builds + 1):
         with ctx.Pool(1) as pool:
-            builds.append(pool.apply(run_build, (args.n, seed)))
+            builds.append(pool.apply(run_build, (args.n, seed, args.threads)))
 
     label = common.size_label(args.n)
     reference = json.loads((common.RESULTS_DIR / f"nmslib_{label}.json").read_text())
@@ -104,9 +106,8 @@ def main() -> None:
         "recall_metric": reference["recall_metric"],
         "query_threads": 1,
         "params": {"M": common.M, "efConstruction": common.EF_CONSTRUCTION, "post": True,
-                   "build_threads": 1},
+                   "build_threads": args.threads},
         "machine": common.machine_info(),
-        "notes": ["Single-threaded build (phase 4); parallel build arrives in phase 5."],
         "builds": builds,
         "noise_band": common.noise_band(builds),
         "parity_vs_nmslib": parity,

@@ -13,6 +13,7 @@ fearless_simd = "1.2"
 pyo3 = "0.30"
 numpy = "0.30"
 rand = "0.10"
+rayon = "1.12"
 
 [dev-dependencies]
 criterion = "0.8"
