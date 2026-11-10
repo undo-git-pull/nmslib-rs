@@ -8,6 +8,7 @@ larger of the band's half-width around the mean and 0.5 percentage points.
 
     python bench/nmslib_baseline.py --n 100000
     python bench/nmslib_baseline.py --n 1000000
+    python bench/nmslib_baseline.py --dataset glove --n 0     # all of GloVe-100
 
 Each build runs in a fresh process so its memory numbers are not mixed with
 the other build or with dataset loading.
@@ -31,15 +32,16 @@ WHEEL_NOTE = ("nmslib 2.1.2 PyPI wheel is compiled for baseline SSE2 only "
               "(no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected.")
 
 
-def run_build(n: int, seed: int, threads: int) -> dict:
+def run_build(dataset: str, n: int, seed: int, threads: int) -> dict:
     import nmslib
 
-    base, queries = common.load_sift(n)
-    gt = common.ground_truth(base, queries)
+    ds = common.DATASETS[dataset]
+    base, queries = common.load(ds, n)
+    gt = common.ground_truth(base, queries, ds=ds)
     order = np.random.default_rng(seed).permutation(len(base))
     shuffled = np.ascontiguousarray(base[order])
 
-    index = nmslib.init(method="hnsw", space="l2")
+    index = nmslib.init(method="hnsw", space=ds.nmslib_space)
     common.reset_peak_rss()
     before = common.rss_mb()
     index.addDataPointBatch(shuffled, ids=order)
@@ -63,7 +65,7 @@ def run_build(n: int, seed: int, threads: int) -> dict:
         found = np.full((len(queries), common.K), -1, np.int64)
         for i, (ids, _) in enumerate(res):
             found[i, : len(ids)] = ids
-        r = common.recall(base, queries, gt, found)
+        r = common.recall(base, queries, gt, found, ds.metric)
         sweep.append({
             "ef_search": ef,
             **r,
@@ -90,7 +92,9 @@ def run_build(n: int, seed: int, threads: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--n", type=int, default=100_000, help="base vectors (prefix of SIFT1M)")
+    ap.add_argument("--dataset", choices=sorted(common.DATASETS), default="sift")
+    ap.add_argument("--n", type=int, default=100_000,
+                    help="base vectors: a prefix of the dataset, or 0 for all of it")
     ap.add_argument("--builds", type=int, default=2,
                     help="independent builds (insertion-order seeds 1..N)")
     ap.add_argument("--threads", type=int, default=32, help="indexThreadQty for the build")
@@ -98,23 +102,27 @@ def main() -> None:
     ap.add_argument("--build-note", default=WHEEL_NOTE,
                     help="note describing how nmslib was built, stored in the JSON")
     args = ap.parse_args()
+    ds = common.DATASETS[args.dataset]
+    if args.n == 0:
+        args.n = ds.full_n
 
     # Compute and cache ground truth once, before the build processes start.
-    base, queries = common.load_sift(args.n)
-    common.ground_truth(base, queries)
+    base, queries = common.load(ds, args.n)
+    common.ground_truth(base, queries, ds=ds)
     del base, queries
 
     ctx = mp.get_context("spawn")
     builds = []
     for seed in range(1, args.builds + 1):
         with ctx.Pool(1) as pool:
-            builds.append(pool.apply(run_build, (args.n, seed, args.threads)))
+            builds.append(pool.apply(run_build, (args.dataset, args.n, seed, args.threads)))
 
-    out = args.out or common.RESULTS_DIR / f"nmslib_{common.size_label(args.n)}.json"
+    out = args.out or common.result_path("nmslib", ds, args.n)
     result = {
         "library": "nmslib",
         "library_version": version("nmslib"),
-        "dataset": "sift-128-euclidean",
+        "dataset": ds.name,
+        "space": ds.nmslib_space,
         "n_base": args.n,
         "n_queries": 10_000,
         "k": common.K,

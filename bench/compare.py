@@ -24,13 +24,15 @@ def mean_of(result: dict, key: str) -> dict[int, float]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--size", default="100k", help="result label, e.g. 100k or 1M")
+    ap.add_argument("--dataset", choices=sorted(common.DATASETS), default="sift")
+    ap.add_argument("--size", default="100k", help="result label, e.g. 100k, 1M or 1.18M")
     ap.add_argument("--reference", help="NMSLIB JSON (default results/nmslib_<size>.json)")
     ap.add_argument("--candidate", help="rhnsw JSON (default results/rhnsw_<size>.json)")
     args = ap.parse_args()
 
-    ref = json.loads(open(args.reference or common.RESULTS_DIR / f"nmslib_{args.size}.json").read())
-    cand = json.loads(open(args.candidate or common.RESULTS_DIR / f"rhnsw_{args.size}.json").read())
+    prefix = common.DATASETS[args.dataset].label_prefix
+    ref = json.loads(open(args.reference or common.RESULTS_DIR / f"nmslib_{prefix}{args.size}.json").read())
+    cand = json.loads(open(args.candidate or common.RESULTS_DIR / f"rhnsw_{prefix}{args.size}.json").read())
     rows = common.parity(ref, cand["builds"])
     ref_qps, cand_qps = mean_of(ref, "qps"), mean_of(cand, "qps")
 
@@ -42,7 +44,8 @@ def main() -> None:
         return (f"{name:<7} {len(r['builds']):>2} builds  build {t:7.1f} s on {threads} thread(s)"
                 f"  index memory {mem:7.1f} MB  peak RSS {peak:7.1f} MB")
 
-    print(f"SIFT {args.size}, recall@10 (mean over builds), queries on 1 thread")
+    print(f"{cand.get('dataset', 'sift-128-euclidean')} {args.size}, recall@10 "
+          f"(mean over builds), queries on 1 thread")
     print(builds_line("nmslib", ref))
     print(builds_line("rhnsw", cand))
     print()

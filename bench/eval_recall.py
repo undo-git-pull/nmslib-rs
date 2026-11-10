@@ -5,6 +5,7 @@ each in a fresh process, the same efSearch sweep on one query thread, and the
 same JSON layout. Also records the parity check against the NMSLIB baseline.
 
     python bench/eval_recall.py --n 100000
+    python bench/eval_recall.py --dataset glove --n 0         # all of GloVe-100
 """
 
 from __future__ import annotations
@@ -20,15 +21,16 @@ import numpy as np
 import common
 
 
-def run_build(n: int, seed: int, threads: int) -> dict:
+def run_build(dataset: str, n: int, seed: int, threads: int) -> dict:
     import rhnsw
 
-    base, queries = common.load_sift(n)
-    gt = common.ground_truth(base, queries)
+    ds = common.DATASETS[dataset]
+    base, queries = common.load(ds, n)
+    gt = common.ground_truth(base, queries, ds=ds)
     order = np.random.default_rng(seed).permutation(len(base))
     shuffled = np.ascontiguousarray(base[order])
 
-    index = rhnsw.Index(dim=base.shape[1], space="l2", M=common.M,
+    index = rhnsw.Index(dim=base.shape[1], space=ds.metric, M=common.M,
                         ef_construction=common.EF_CONSTRUCTION, seed=seed, post=True)
     common.reset_peak_rss()
     before = common.rss_mb()
@@ -46,7 +48,7 @@ def run_build(n: int, seed: int, threads: int) -> dict:
         labels, _ = index.knn_query(queries, k=common.K, num_threads=1)
         elapsed = time.perf_counter() - t0
         found = np.where(labels >= 0, order[np.maximum(labels, 0)], -1)
-        r = common.recall(base, queries, gt, found)
+        r = common.recall(base, queries, gt, found, ds.metric)
         sweep.append({
             "ef_search": ef,
             **r,
@@ -72,16 +74,23 @@ def run_build(n: int, seed: int, threads: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--n", type=int, default=100_000, help="base vectors (prefix of SIFT1M)")
+    ap.add_argument("--dataset", choices=sorted(common.DATASETS), default="sift")
+    ap.add_argument("--n", type=int, default=100_000,
+                    help="base vectors: a prefix of the dataset, or 0 for all of it")
     ap.add_argument("--builds", type=int, default=3,
                     help="independent builds (insertion-order seeds 1..N)")
     ap.add_argument("--threads", type=int, default=32,
                     help="build threads (NMSLIB baseline uses indexThreadQty=32; 1 = sequential)")
+    ap.add_argument("--reference", help="NMSLIB JSON for the parity check "
+                    "(default bench/results/nmslib_<dataset><n>.json)")
     ap.add_argument("--out", help="output JSON (default bench/results/rhnsw_<n>.json)")
     args = ap.parse_args()
+    ds = common.DATASETS[args.dataset]
+    if args.n == 0:
+        args.n = ds.full_n
 
-    base, queries = common.load_sift(args.n)
-    common.ground_truth(base, queries)
+    base, queries = common.load(ds, args.n)
+    common.ground_truth(base, queries, ds=ds)
     del base, queries
 
     import rhnsw
@@ -90,16 +99,16 @@ def main() -> None:
     builds = []
     for seed in range(1, args.builds + 1):
         with ctx.Pool(1) as pool:
-            builds.append(pool.apply(run_build, (args.n, seed, args.threads)))
+            builds.append(pool.apply(run_build, (args.dataset, args.n, seed, args.threads)))
 
-    label = common.size_label(args.n)
-    reference = json.loads((common.RESULTS_DIR / f"nmslib_{label}.json").read_text())
+    reference = json.loads(open(args.reference or common.result_path("nmslib", ds, args.n)).read())
     parity = common.parity(reference, builds)
     result = {
         "library": "rhnsw",
         "library_version": "0.1.0",
         "simd_level": rhnsw.simd_level(),
-        "dataset": "sift-128-euclidean",
+        "dataset": ds.name,
+        "space": ds.metric,
         "n_base": args.n,
         "n_queries": 10_000,
         "k": common.K,
@@ -113,7 +122,7 @@ def main() -> None:
         "parity_vs_nmslib": parity,
         "all_pass": all(p["pass"] for p in parity),
     }
-    out = args.out or common.RESULTS_DIR / f"rhnsw_{label}.json"
+    out = args.out or common.result_path("rhnsw", ds, args.n)
     common.RESULTS_DIR.mkdir(exist_ok=True)
     with open(out, "w") as f:
         json.dump(result, f, indent=2)
