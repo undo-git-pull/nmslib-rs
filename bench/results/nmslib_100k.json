@@ -1,0 +1,216 @@
+{
+  "library": "nmslib",
+  "library_version": "2.1.2",
+  "dataset": "sift-128-euclidean",
+  "n_base": 100000,
+  "n_queries": 10000,
+  "k": 10,
+  "recall_metric": "distance-based recall@10 (ann-benchmarks style); recall_ids is plain id overlap",
+  "query_threads": 1,
+  "params": {
+    "M": 16,
+    "efConstruction": 200,
+    "post": 2,
+    "indexThreadQty": 32
+  },
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "b67ef6c",
+    "date": "2026-11-10T17:35:40+0000"
+  },
+  "notes": [
+    "nmslib 2.1.2 PyPI wheel is compiled for baseline SSE2 only (no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected."
+  ],
+  "builds": [
+    {
+      "insertion_order_seed": 1,
+      "build_time_s": 2.05,
+      "memory": {
+        "rss_before_build_mb": 158.5,
+        "peak_rss_build_mb": 369.4,
+        "rss_after_build_mb": 369.4,
+        "index_mb": 210.9
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.85791,
+          "recall_ids": 0.85787,
+          "qps": 31318.6,
+          "query_time_s": 0.319,
+          "peak_rss_mb": 568.2
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.94466,
+          "recall_ids": 0.94464,
+          "qps": 20435.3,
+          "query_time_s": 0.489,
+          "peak_rss_mb": 573.6
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.98559,
+          "recall_ids": 0.98557,
+          "qps": 12351.7,
+          "query_time_s": 0.81,
+          "peak_rss_mb": 574.8
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.99766,
+          "recall_ids": 0.99764,
+          "qps": 7403.6,
+          "query_time_s": 1.351,
+          "peak_rss_mb": 576.5
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99977,
+          "recall_ids": 0.99975,
+          "qps": 4336.9,
+          "query_time_s": 2.306,
+          "peak_rss_mb": 578.7
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99996,
+          "recall_ids": 0.99994,
+          "qps": 2539.1,
+          "query_time_s": 3.938,
+          "peak_rss_mb": 579.7
+        },
+        {
+          "ef_search": 640,
+          "recall": 0.99999,
+          "recall_ids": 0.99997,
+          "qps": 1512.5,
+          "query_time_s": 6.611,
+          "peak_rss_mb": 579.7
+        }
+      ]
+    },
+    {
+      "insertion_order_seed": 2,
+      "build_time_s": 2.08,
+      "memory": {
+        "rss_before_build_mb": 158.5,
+        "peak_rss_build_mb": 369.3,
+        "rss_after_build_mb": 369.3,
+        "index_mb": 210.8
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.85722,
+          "recall_ids": 0.85718,
+          "qps": 31174.9,
+          "query_time_s": 0.321,
+          "peak_rss_mb": 567.8
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.94444,
+          "recall_ids": 0.94438,
+          "qps": 20372.7,
+          "query_time_s": 0.491,
+          "peak_rss_mb": 573.2
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.98581,
+          "recall_ids": 0.98574,
+          "qps": 12584.1,
+          "query_time_s": 0.795,
+          "peak_rss_mb": 574.3
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.99763,
+          "recall_ids": 0.99756,
+          "qps": 7367.6,
+          "query_time_s": 1.357,
+          "peak_rss_mb": 575.3
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99974,
+          "recall_ids": 0.99967,
+          "qps": 4268.1,
+          "query_time_s": 2.343,
+          "peak_rss_mb": 578.1
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99995,
+          "recall_ids": 0.99988,
+          "qps": 2501.2,
+          "query_time_s": 3.998,
+          "peak_rss_mb": 578.1
+        },
+        {
+          "ef_search": 640,
+          "recall": 1.0,
+          "recall_ids": 0.99993,
+          "qps": 1447.0,
+          "query_time_s": 6.911,
+          "peak_rss_mb": 578.6
+        }
+      ]
+    }
+  ],
+  "noise_band": [
+    {
+      "ef_search": 10,
+      "recall_min": 0.85722,
+      "recall_max": 0.85791,
+      "recall_mean": 0.857565,
+      "spread": 0.00069
+    },
+    {
+      "ef_search": 20,
+      "recall_min": 0.94444,
+      "recall_max": 0.94466,
+      "recall_mean": 0.94455,
+      "spread": 0.00022
+    },
+    {
+      "ef_search": 40,
+      "recall_min": 0.98559,
+      "recall_max": 0.98581,
+      "recall_mean": 0.9857,
+      "spread": 0.00022
+    },
+    {
+      "ef_search": 80,
+      "recall_min": 0.99763,
+      "recall_max": 0.99766,
+      "recall_mean": 0.997645,
+      "spread": 3e-05
+    },
+    {
+      "ef_search": 160,
+      "recall_min": 0.99974,
+      "recall_max": 0.99977,
+      "recall_mean": 0.999755,
+      "spread": 3e-05
+    },
+    {
+      "ef_search": 320,
+      "recall_min": 0.99995,
+      "recall_max": 0.99996,
+      "recall_mean": 0.999955,
+      "spread": 1e-05
+    },
+    {
+      "ef_search": 640,
+      "recall_min": 0.99999,
+      "recall_max": 1.0,
+      "recall_mean": 0.999995,
+      "spread": 1e-05
+    }
+  ]
+}
