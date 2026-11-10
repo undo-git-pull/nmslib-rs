@@ -29,10 +29,6 @@ def write_matrix(path: Path, a: np.ndarray) -> None:
         f.write(np.ascontiguousarray(a, "<f4").tobytes())
 
 
-def label(n: int) -> str:
-    return f"{n // 1000}k" if n < 1_000_000 else f"{n // 1_000_000}M"
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--n", type=int, default=100_000)
@@ -41,7 +37,7 @@ def main() -> None:
 
     base, queries = common.load_sift(args.n)
     gt = common.ground_truth(base, queries)
-    work = common.DATA_DIR / f"rust_eval_{label(args.n)}"
+    work = common.DATA_DIR / f"rust_eval_{common.size_label(args.n)}"
     work.mkdir(exist_ok=True)
     base_path, query_path = work / "base.f32", work / "queries.f32"
     write_matrix(base_path, base)
@@ -63,25 +59,8 @@ def main() -> None:
             row.update(common.recall(base, queries, gt, raw.reshape(len(queries), common.K).astype(np.int64)))
         builds.append(summary)
 
-    baseline = json.loads((common.RESULTS_DIR / f"nmslib_{label(args.n)}.json").read_text())
-    nmslib_band = {b["ef_search"]: b for b in baseline["noise_band"]}
-    parity = []
-    for i, ef in enumerate(common.EF_SEARCH):
-        rs = [b["sweep"][i]["recall"] for b in builds]
-        ref = nmslib_band[ef]
-        mean = float(np.mean(rs))
-        worst = max(abs(r - ref["recall_mean"]) for r in rs)
-        parity.append({
-            "ef_search": ef,
-            "rhnsw_recall_mean": round(mean, 6),
-            "rhnsw_recall_min": round(min(rs), 6),
-            "rhnsw_recall_max": round(max(rs), 6),
-            "nmslib_recall_mean": ref["recall_mean"],
-            "diff_mean": round(mean - ref["recall_mean"], 6),
-            "worst_abs_diff": round(worst, 6),
-            "tolerance": ref["tolerance"],
-            "pass": worst <= ref["tolerance"],
-        })
+    baseline = json.loads((common.RESULTS_DIR / f"nmslib_{common.size_label(args.n)}.json").read_text())
+    parity = common.parity(baseline, builds)
 
     result = {
         "library": "rhnsw",
@@ -96,16 +75,16 @@ def main() -> None:
         "parity_vs_nmslib": parity,
         "all_pass": all(p["pass"] for p in parity),
     }
-    out = common.RESULTS_DIR / f"rhnsw_{label(args.n)}_phase3.json"
+    out = common.RESULTS_DIR / f"rhnsw_{common.size_label(args.n)}_phase3.json"
     out.write_text(json.dumps(result, indent=2))
 
     nm_qps = {r["ef_search"]: r["qps"] for r in baseline["builds"][0]["sweep"]}
-    print(f"\nrhnsw {label(args.n)}: {len(builds)} builds, build time "
+    print(f"\nrhnsw {common.size_label(args.n)}: {len(builds)} builds, build time "
           f"{[b['build_time_s'] for b in builds]} s (1 thread)")
     print(f"{'ef':>4}  {'rhnsw':>8} {'nmslib':>8} {'diff':>8} {'worst':>8} {'tol':>6}  "
           f"{'pass':4}  {'qps rh':>8} {'qps nm':>8}")
     for p, i in zip(parity, range(len(parity))):
-        print(f"{p['ef_search']:>4}  {p['rhnsw_recall_mean']:8.5f} {p['nmslib_recall_mean']:8.5f} "
+        print(f"{p['ef_search']:>4}  {p['recall_mean']:8.5f} {p['reference_recall_mean']:8.5f} "
               f"{p['diff_mean']:+8.5f} {p['worst_abs_diff']:8.5f} {p['tolerance']:6.3f}  "
               f"{'yes' if p['pass'] else 'NO':4}  {builds[0]['sweep'][i]['qps']:8.0f} "
               f"{nm_qps[p['ef_search']]:8.0f}")

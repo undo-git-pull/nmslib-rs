@@ -30,6 +30,8 @@ EF_CONSTRUCTION = 200
 # Relative slack when comparing a returned distance to the k-th true distance,
 # so float rounding on exact ties does not count as a miss.
 TIE_RTOL = 1e-6
+# Minimum half-width of the parity band, in recall (0.5 percentage points).
+MIN_TOLERANCE = 0.005
 
 
 def load_sift(n: int | None) -> tuple[np.ndarray, np.ndarray]:
@@ -86,6 +88,50 @@ def recall(base: np.ndarray, queries: np.ndarray, gt: np.ndarray, found: np.ndar
     id_hits = [len(set(f) & set(g)) for f, g in zip(found.tolist(), gt.tolist())]
     return {"recall": round(float(hits.mean() / k), 6),
             "recall_ids": round(float(np.mean(id_hits) / k), 6)}
+
+
+def size_label(n: int) -> str:
+    return f"{n // 1000}k" if n < 1_000_000 else f"{n // 1_000_000}M"
+
+
+def noise_band(builds: list[dict]) -> list[dict]:
+    """Per-efSearch recall spread across builds, with the parity tolerance:
+    the larger of the band's half-width around the mean and MIN_TOLERANCE."""
+    band = []
+    for i, ef in enumerate(EF_SEARCH):
+        rs = [b["sweep"][i]["recall"] for b in builds]
+        mean = float(np.mean(rs))
+        band.append({
+            "ef_search": ef,
+            "recall_min": round(min(rs), 6),
+            "recall_max": round(max(rs), 6),
+            "recall_mean": round(mean, 6),
+            "recall_std": round(float(np.std(rs, ddof=1)), 6) if len(rs) > 1 else 0.0,
+            "spread": round(max(rs) - min(rs), 6),
+            "tolerance": round(max(max(rs) - mean, mean - min(rs), MIN_TOLERANCE), 6),
+        })
+    return band
+
+
+def parity(reference: dict, builds: list[dict]) -> list[dict]:
+    """PLAN.md parity rule: every build's recall is within the reference
+    (NMSLIB) tolerance of the reference mean, at each efSearch."""
+    ref_band = {b["ef_search"]: b for b in reference["noise_band"]}
+    rows = []
+    for i, ef in enumerate(EF_SEARCH):
+        rs = [b["sweep"][i]["recall"] for b in builds]
+        ref = ref_band[ef]
+        worst = max(abs(r - ref["recall_mean"]) for r in rs)
+        rows.append({
+            "ef_search": ef,
+            "recall_mean": round(float(np.mean(rs)), 6),
+            "reference_recall_mean": ref["recall_mean"],
+            "diff_mean": round(float(np.mean(rs)) - ref["recall_mean"], 6),
+            "worst_abs_diff": round(worst, 6),
+            "tolerance": ref["tolerance"],
+            "pass": bool(worst <= ref["tolerance"]),
+        })
+    return rows
 
 
 def rss_mb() -> dict:

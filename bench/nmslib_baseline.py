@@ -27,8 +27,6 @@ import numpy as np
 import common
 
 POST = 2
-# Minimum half-width of the parity band, in recall (0.5 percentage points).
-MIN_TOLERANCE = 0.005
 
 
 def run_build(n: int, seed: int, threads: int) -> dict:
@@ -88,23 +86,6 @@ def run_build(n: int, seed: int, threads: int) -> dict:
     }
 
 
-def noise_band(builds: list[dict]) -> list[dict]:
-    band = []
-    for i, ef in enumerate(common.EF_SEARCH):
-        rs = [b["sweep"][i]["recall"] for b in builds]
-        band.append({
-            "ef_search": ef,
-            "recall_min": round(min(rs), 6),
-            "recall_max": round(max(rs), 6),
-            "recall_mean": round(float(np.mean(rs)), 6),
-            "recall_std": round(float(np.std(rs, ddof=1)), 6),
-            "spread": round(max(rs) - min(rs), 6),
-            "tolerance": round(max(max(rs) - np.mean(rs), np.mean(rs) - min(rs),
-                                   MIN_TOLERANCE), 6),
-        })
-    return band
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--n", type=int, default=100_000, help="base vectors (prefix of SIFT1M)")
@@ -125,8 +106,7 @@ def main() -> None:
         with ctx.Pool(1) as pool:
             builds.append(pool.apply(run_build, (args.n, seed, args.threads)))
 
-    label = f"{args.n // 1000}k" if args.n < 1_000_000 else f"{args.n // 1_000_000}M"
-    out = args.out or common.RESULTS_DIR / f"nmslib_{label}.json"
+    out = args.out or common.RESULTS_DIR / f"nmslib_{common.size_label(args.n)}.json"
     result = {
         "library": "nmslib",
         "library_version": version("nmslib"),
@@ -145,7 +125,7 @@ def main() -> None:
             "(no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected.",
         ],
         "builds": builds,
-        "noise_band": noise_band(builds),
+        "noise_band": common.noise_band(builds),
     }
     common.RESULTS_DIR.mkdir(exist_ok=True)
     with open(out, "w") as f:

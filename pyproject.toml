@@ -8,3 +8,7 @@ version = "0.1.0"
 description = "HNSW approximate nearest neighbor search in Rust"
 requires-python = ">=3.12"
 dependencies = ["numpy>=2"]
+
+[project.optional-dependencies]
+# Tests and benchmarks: pip install -e .[dev]  (or uv pip install ...)
+dev = ["maturin>=1.16,<2.0", "pytest", "h5py", "nmslib==2.1.2"]
