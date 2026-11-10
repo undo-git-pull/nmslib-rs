@@ -14,6 +14,8 @@ pyo3 = "0.30"
 numpy = "0.30"
 rand = "0.10"
 rayon = "1.12"
+memmap2 = "0.9"
+bytemuck = "1.25"
 
 [features]
 # Count distance computations and node expansions in queries (profiling only).

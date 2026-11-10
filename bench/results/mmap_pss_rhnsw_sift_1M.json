@@ -1,0 +1,155 @@
+{
+  "index_file": "/home/raylee/dev/nmslib-rs/bench/data/rhnsw_sift_1M.rhnsw",
+  "file_mb": 684.3,
+  "processes": 8,
+  "queries_per_process": 10000,
+  "ef_search": 640,
+  "groups": {
+    "baseline": {
+      "per_process_rss_mb": [
+        51.7,
+        51.8,
+        51.9,
+        51.7,
+        51.7,
+        51.7,
+        51.8,
+        51.8
+      ],
+      "per_process_pss_mb": [
+        27.1,
+        27.2,
+        27.2,
+        27.1,
+        27.1,
+        27.1,
+        27.1,
+        27.1
+      ],
+      "per_process_map_rss_mb": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "per_process_map_pss_mb": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "sum_rss_mb": 414.0,
+      "sum_pss_mb": 217.0
+    },
+    "mapped": {
+      "per_process_rss_mb": [
+        737.2,
+        737.3,
+        737.2,
+        737.2,
+        737.2,
+        737.1,
+        737.3,
+        737.1
+      ],
+      "per_process_pss_mb": [
+        113.6,
+        113.6,
+        113.7,
+        113.6,
+        113.6,
+        113.6,
+        113.6,
+        113.6
+      ],
+      "per_process_map_rss_mb": [
+        684.3,
+        684.3,
+        684.3,
+        684.3,
+        684.3,
+        684.3,
+        684.3,
+        684.3
+      ],
+      "per_process_map_pss_mb": [
+        85.5,
+        85.5,
+        85.5,
+        85.5,
+        85.5,
+        85.5,
+        85.5,
+        85.5
+      ],
+      "sum_rss_mb": 5897.6,
+      "sum_pss_mb": 909.2
+    },
+    "copy": {
+      "per_process_rss_mb": [
+        688.7,
+        688.7,
+        688.9,
+        688.9,
+        688.7,
+        688.7,
+        688.8,
+        688.8
+      ],
+      "per_process_pss_mb": [
+        664.0,
+        664.0,
+        664.1,
+        664.0,
+        664.0,
+        664.0,
+        664.0,
+        664.0
+      ],
+      "per_process_map_rss_mb": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "per_process_map_pss_mb": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "sum_rss_mb": 5510.3,
+      "sum_pss_mb": 5312.0
+    }
+  },
+  "gate": {
+    "rule": "sum PSS (mapped) <= 1.1 * (file size + sum PSS (baseline))",
+    "limit_mb": 991.5,
+    "mapped_sum_pss_mb": 909.2,
+    "pass": true
+  },
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "e7ea32f",
+    "date": "2026-11-10T19:48:29+0000"
+  }
+}

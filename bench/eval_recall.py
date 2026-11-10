@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import multiprocessing as mp
 import sys
 import time
@@ -21,7 +22,7 @@ import numpy as np
 import common
 
 
-def run_build(dataset: str, n: int, seed: int, threads: int) -> dict:
+def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool) -> dict:
     import rhnsw
 
     ds = common.DATASETS[dataset]
@@ -39,6 +40,17 @@ def run_build(dataset: str, n: int, seed: int, threads: int) -> dict:
     build_time = time.perf_counter() - t0
     after_build = common.rss_mb()
     print(f"[seed {seed}] build {build_time:.1f}s", file=sys.stderr, flush=True)
+    mapped = {}
+    if mmap:
+        # Query a memory-mapped copy instead: save, drop the built index, load.
+        path = common.DATA_DIR / f".eval_recall_{os.getpid()}.rhnsw"
+        index.save(path)
+        del index
+        t0 = time.perf_counter()
+        index = rhnsw.Index.load(path, mmap=True)
+        mapped = {"queried": "memory-mapped saved index", "load_ms": round((time.perf_counter() - t0) * 1e3, 2),
+                  "file_mb": round(path.stat().st_size / 2**20, 1)}
+        path.unlink()  # the mapping stays valid after unlinking
 
     sweep = []
     for ef in common.EF_SEARCH:
@@ -62,6 +74,7 @@ def run_build(dataset: str, n: int, seed: int, threads: int) -> dict:
     return {
         "insertion_order_seed": seed,
         "build_time_s": round(build_time, 2),
+        **({"mmap": mapped} if mapped else {}),
         "memory": {
             "rss_before_build_mb": before["rss_mb"],
             "peak_rss_build_mb": after_build["peak_rss_mb"],
@@ -79,6 +92,8 @@ def main() -> None:
                     help="base vectors: a prefix of the dataset, or 0 for all of it")
     ap.add_argument("--builds", type=int, default=3,
                     help="independent builds (insertion-order seeds 1..N)")
+    ap.add_argument("--mmap", action="store_true",
+                    help="query a saved, memory-mapped copy of each built index")
     ap.add_argument("--threads", type=int, default=32,
                     help="build threads (NMSLIB baseline uses indexThreadQty=32; 1 = sequential)")
     ap.add_argument("--reference", help="NMSLIB JSON for the parity check "
@@ -99,7 +114,7 @@ def main() -> None:
     builds = []
     for seed in range(1, args.builds + 1):
         with ctx.Pool(1) as pool:
-            builds.append(pool.apply(run_build, (args.dataset, args.n, seed, args.threads)))
+            builds.append(pool.apply(run_build, (args.dataset, args.n, seed, args.threads, args.mmap)))
 
     reference = json.loads(open(args.reference or common.result_path("nmslib", ds, args.n)).read())
     parity = common.parity(reference, builds)
@@ -114,6 +129,7 @@ def main() -> None:
         "k": common.K,
         "recall_metric": reference["recall_metric"],
         "query_threads": 1,
+        "queried_index": "memory-mapped" if args.mmap else "in-memory",
         "params": {"M": common.M, "efConstruction": common.EF_CONSTRUCTION, "post": True,
                    "build_threads": args.threads},
         "machine": common.machine_info(),

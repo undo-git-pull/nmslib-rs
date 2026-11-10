@@ -1,0 +1,64 @@
+{
+  "dataset": "sift-128-euclidean",
+  "n_base": 1000000,
+  "file": "bench/data/rhnsw_sift_1M.rhnsw",
+  "file_mb": 684.3,
+  "build_s": 24.19,
+  "build_threads": 32,
+  "save_s": 0.35,
+  "load_mmap_ms": 10.48,
+  "load_copy_s": 0.53,
+  "load_note": "file evicted from the page cache before each load",
+  "cold_mmap_queries": {
+    "ef_search": 80,
+    "first_query_ms": 301.07,
+    "next_1000_queries_ms": 1237.0,
+    "same_1000_queries_warm_ms": 116.6
+  },
+  "identical_results": [
+    {
+      "ef_search": 10,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 20,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 40,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 80,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 160,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 320,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 640,
+      "mmap_identical": true,
+      "copy_identical": true
+    }
+  ],
+  "all_identical": true,
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "e7ea32f",
+    "date": "2026-11-10T19:46:32+0000"
+  }
+}

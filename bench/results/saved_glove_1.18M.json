@@ -1,0 +1,64 @@
+{
+  "dataset": "glove-100-angular",
+  "n_base": 1183514,
+  "file": "bench/data/rhnsw_glove_1.18M.rhnsw",
+  "file_mb": 737.7,
+  "build_s": 34.3,
+  "build_threads": 32,
+  "save_s": 0.29,
+  "load_mmap_ms": 9.42,
+  "load_copy_s": 0.59,
+  "load_note": "file evicted from the page cache before each load",
+  "cold_mmap_queries": {
+    "ef_search": 80,
+    "first_query_ms": 482.1,
+    "next_1000_queries_ms": 1169.4,
+    "same_1000_queries_warm_ms": 158.4
+  },
+  "identical_results": [
+    {
+      "ef_search": 10,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 20,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 40,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 80,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 160,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 320,
+      "mmap_identical": true,
+      "copy_identical": true
+    },
+    {
+      "ef_search": 640,
+      "mmap_identical": true,
+      "copy_identical": true
+    }
+  ],
+  "all_identical": true,
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "e7ea32f",
+    "date": "2026-11-10T19:47:13+0000"
+  }
+}

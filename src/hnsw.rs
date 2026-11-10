@@ -30,6 +30,9 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use rayon::prelude::*;
 
+use std::path::Path;
+
+use crate::frozen::{self, LoadError, Mapped, Meta};
 use crate::simd::{dot_in, l2_sq_in, prefetch_in};
 use crate::visited::VisitedSet;
 
@@ -106,9 +109,71 @@ impl Store {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-struct Entry {
-    node: Option<u32>,
-    max_level: usize,
+pub(crate) struct Entry {
+    pub(crate) node: Option<u32>,
+    pub(crate) max_level: usize,
+}
+
+/// Read access to vectors and neighbor lists. Implemented by the build graph
+/// and by a memory-mapped saved index (`frozen::FrozenView`), so both use one
+/// search implementation.
+pub(crate) trait View: Sync {
+    fn space(&self) -> Space;
+    fn len(&self) -> usize;
+    fn entry(&self) -> Entry;
+    fn level(&self, id: u32) -> usize;
+    fn vector(&self, id: u32) -> &[f32];
+    fn neighbors(&self, id: u32, level: usize) -> impl Iterator<Item = u32> + '_;
+    /// Starts loading `id`'s list at `level` into cache.
+    fn prefetch_list<S: Simd>(&self, simd: S, id: u32, level: usize);
+
+    #[inline(always)]
+    fn dist<S: Simd>(&self, simd: S, q: &[f32], id: u32) -> f32 {
+        let v = self.vector(id);
+        match self.space() {
+            Space::L2 => l2_sq_in(simd, q, v),
+            Space::Cosine => 1.0 - dot_in(simd, q, v),
+        }
+    }
+}
+
+/// The build-time index: vectors in `Store`, lists in the concurrent `Graph`.
+struct BuildView<'a> {
+    store: &'a Store,
+    graph: &'a Graph,
+}
+
+impl View for BuildView<'_> {
+    fn space(&self) -> Space {
+        self.store.space
+    }
+
+    fn len(&self) -> usize {
+        self.graph.levels.len()
+    }
+
+    fn entry(&self) -> Entry {
+        self.graph.entry_state()
+    }
+
+    fn level(&self, id: u32) -> usize {
+        self.graph.level(id)
+    }
+
+    #[inline(always)]
+    fn vector(&self, id: u32) -> &[f32] {
+        self.store.vector(id)
+    }
+
+    #[inline(always)]
+    fn neighbors(&self, id: u32, level: usize) -> impl Iterator<Item = u32> + '_ {
+        self.graph.neighbors(id, level)
+    }
+
+    #[inline(always)]
+    fn prefetch_list<S: Simd>(&self, simd: S, id: u32, level: usize) {
+        prefetch_in(simd, self.graph.list_memory(id, level));
+    }
 }
 
 /// Neighbor lists. Each list is a block of `1 + cap` atomic slots: the length,
@@ -230,6 +295,7 @@ impl Graph {
         self.entry_state().node
     }
 
+    #[cfg(test)]
     pub(crate) fn max_level(&self) -> usize {
         self.entry_state().max_level
     }
@@ -317,9 +383,15 @@ impl Drop for PooledScratch<'_> {
     }
 }
 
+/// How an index holds its data: built in memory (and still growable), or a
+/// saved file mapped read-only.
+enum Repr {
+    Build { store: Store, graph: Graph },
+    Mapped(Mapped),
+}
+
 pub struct Hnsw {
-    store: Store,
-    graph: Graph,
+    repr: Repr,
     params: Params,
     ml: f64,
     rng: StdRng,
@@ -334,8 +406,10 @@ impl Hnsw {
         assert!(params.m >= 2, "M must be at least 2");
         assert!(params.ef_construction >= 1, "ef_construction must be positive");
         Self {
-            store: Store { dim, space, data: Vec::new() },
-            graph: Graph::new(params.m, 2 * params.m),
+            repr: Repr::Build {
+                store: Store { dim, space, data: Vec::new() },
+                graph: Graph::new(params.m, 2 * params.m),
+            },
             ml: 1.0 / (params.m as f64).ln(),
             rng: StdRng::seed_from_u64(params.seed),
             scratch: ScratchPool::default(),
@@ -346,11 +420,99 @@ impl Hnsw {
     }
 
     pub fn dim(&self) -> usize {
-        self.store.dim
+        match &self.repr {
+            Repr::Build { store, .. } => store.dim,
+            Repr::Mapped(m) => m.header().dim,
+        }
+    }
+
+    pub fn space(&self) -> Space {
+        match &self.repr {
+            Repr::Build { store, .. } => store.space,
+            Repr::Mapped(m) => m.header().space,
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.store.data.len() / self.store.dim
+        match &self.repr {
+            Repr::Build { store, .. } => store.data.len() / store.dim,
+            Repr::Mapped(m) => m.header().n,
+        }
+    }
+
+    /// True for an index loaded with `mmap`; such an index cannot grow.
+    pub fn is_read_only(&self) -> bool {
+        matches!(self.repr, Repr::Mapped(_))
+    }
+
+    fn build_parts(&self) -> (&Store, &Graph) {
+        match &self.repr {
+            Repr::Build { store, graph } => (store, graph),
+            Repr::Mapped(_) => panic!("index is memory-mapped and read-only"),
+        }
+    }
+
+    fn build_parts_mut(&mut self) -> (&mut Store, &mut Graph) {
+        match &mut self.repr {
+            Repr::Build { store, graph } => (store, graph),
+            Repr::Mapped(_) => panic!("index is memory-mapped and read-only"),
+        }
+    }
+
+    /// Saves the index to `path` (see `frozen` for the format). Writes a
+    /// temporary file in the same directory, then renames it over `path`.
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        let meta = Meta {
+            dim: self.dim(),
+            space: self.space(),
+            m: self.params.m,
+            ef_construction: self.params.ef_construction,
+            post: self.params.post,
+            seed: self.params.seed,
+        };
+        match &self.repr {
+            Repr::Build { store, graph } => frozen::save(&BuildView { store, graph }, &meta, path),
+            Repr::Mapped(m) => frozen::save(&m.view(), &meta, path),
+        }
+    }
+
+    /// Loads a saved index. With `mmap`, the file is mapped read-only: pages
+    /// are shared with every other process mapping it, nothing is read until
+    /// queries touch it, and the index cannot grow. The file must not be
+    /// modified while mapped. Without `mmap`, the index is copied into memory
+    /// and works like a freshly built one. Adding to a loaded index draws
+    /// levels from a fresh generator seeded with the saved seed.
+    pub fn load(path: &Path, mmap: bool) -> Result<Hnsw, LoadError> {
+        let mapped = Mapped::open(path)?;
+        let h = mapped.header().clone();
+        let params = Params { m: h.m, ef_construction: h.ef_construction, post: h.post, seed: h.seed };
+        let mut index = Hnsw::new(h.dim, h.space, params);
+        if mmap {
+            index.repr = Repr::Mapped(mapped);
+            return Ok(index);
+        }
+        let v = mapped.view();
+        let mut data = Vec::with_capacity(h.n * h.dim);
+        let mut levels = Vec::with_capacity(h.n);
+        for id in 0..h.n as u32 {
+            data.extend_from_slice(v.vector(id));
+            levels.push(v.level(id) as u8);
+        }
+        let mut graph = Graph::new(h.m, h.max_m0);
+        graph.grow(&levels);
+        let mut ids = Vec::new();
+        for id in 0..h.n as u32 {
+            for level in 0..=v.level(id) {
+                ids.clear();
+                ids.extend(v.neighbors(id, level));
+                graph.set_neighbors(id, level, &ids);
+            }
+        }
+        if let Some(e) = h.entry.node {
+            graph.set_entry(e, h.entry.max_level);
+        }
+        index.repr = Repr::Build { store: Store { dim: h.dim, space: h.space, data }, graph };
+        Ok(index)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -369,34 +531,42 @@ impl Hnsw {
     /// the first add on an empty index also runs the reverse-order rebuild and
     /// level-0 merge.
     pub fn add_vec(&mut self, vectors: Vec<f32>, threads: usize) {
-        let dim = self.store.dim;
+        assert!(!self.is_read_only(), "index is memory-mapped and read-only");
+        let dim = self.dim();
         assert!(vectors.len() % dim == 0, "vectors length is not a multiple of dim");
         let first_id = self.len();
         let n = first_id + vectors.len() / dim;
-        assert!(n <= u32::MAX as usize, "too many vectors");
+        assert!(n < u32::MAX as usize, "too many vectors");
         if n == first_id {
             return;
         }
-        if self.store.data.is_empty() {
-            self.store.data = vectors;
-        } else {
-            self.store.data.extend_from_slice(&vectors);
-        }
-        if self.store.space == Space::Cosine {
-            for v in self.store.data[first_id * dim..].chunks_exact_mut(dim) {
-                normalize(v);
-            }
-        }
-
         let levels: Vec<u8> = (first_id..n).map(|_| self.random_level()).collect();
-        self.graph.grow(&levels);
+        {
+            let (store, graph) = self.build_parts_mut();
+            if store.data.is_empty() {
+                store.data = vectors;
+            } else {
+                store.data.extend_from_slice(&vectors);
+            }
+            if store.space == Space::Cosine {
+                for v in store.data[first_id * dim..].chunks_exact_mut(dim) {
+                    normalize(v);
+                }
+            }
+            graph.grow(&levels);
+        }
         let order: Vec<u32> = (first_id as u32..n as u32).collect();
         self.insert_all(&order, threads);
 
         if self.params.post && first_id == 0 {
-            let first = std::mem::replace(&mut self.graph, Graph::new(self.params.m, 2 * self.params.m));
             let levels: Vec<u8> = (0..n).map(|_| self.random_level()).collect();
-            self.graph.grow(&levels);
+            let (m, max_m0) = (self.params.m, 2 * self.params.m);
+            let first = {
+                let (_, graph) = self.build_parts_mut();
+                let mut second = Graph::new(m, max_m0);
+                second.grow(&levels);
+                std::mem::replace(graph, second)
+            };
             let reverse: Vec<u32> = std::iter::once(0).chain((1..n as u32).rev()).collect();
             self.insert_all(&reverse, threads);
             self.merge_level0(&first, threads);
@@ -406,7 +576,7 @@ impl Hnsw {
     /// The `k` nearest neighbors of `query`, nearest first, as `(id, distance)`.
     /// L2 distances are squared. Searches level 0 with `max(ef_search, k)`.
     pub fn knn_query(&self, query: &[f32], k: usize, ef_search: usize) -> Vec<(u32, f32)> {
-        assert_eq!(query.len(), self.store.dim, "query has the wrong dimension");
+        assert_eq!(query.len(), self.dim(), "query has the wrong dimension");
         let mut scratch = self.scratch.get(self.len());
         self.search(query, k, ef_search, &mut scratch).iter().map(|c| (c.id, c.dist)).collect()
     }
@@ -423,7 +593,7 @@ impl Hnsw {
         labels: &mut [i64],
         distances: &mut [f32],
     ) {
-        let dim = self.store.dim;
+        let dim = self.dim();
         assert!(k > 0, "k must be positive");
         assert!(queries.len() % dim == 0, "queries length is not a multiple of dim");
         let nq = queries.len() / dim;
@@ -455,10 +625,24 @@ impl Hnsw {
 
     /// The `k` nearest of `query`, nearest first, in `scratch.found`.
     fn search<'s>(&self, query: &[f32], k: usize, ef_search: usize, scratch: &'s mut Scratch) -> &'s [Cand] {
-        let entry = self.graph.entry_state();
+        match &self.repr {
+            Repr::Build { store, graph } => self.search_in(&BuildView { store, graph }, query, k, ef_search, scratch),
+            Repr::Mapped(m) => self.search_in(&m.view(), query, k, ef_search, scratch),
+        }
+    }
+
+    fn search_in<'s, V: View>(
+        &self,
+        view: &V,
+        query: &[f32],
+        k: usize,
+        ef_search: usize,
+        scratch: &'s mut Scratch,
+    ) -> &'s [Cand] {
+        let entry = view.entry();
         scratch.found.clear();
         let Some(ep_id) = entry.node else { return &scratch.found };
-        let q = if self.store.space == Space::Cosine {
+        let q = if view.space() == Space::Cosine {
             scratch.query.clear();
             scratch.query.extend_from_slice(query);
             normalize(&mut scratch.query);
@@ -467,13 +651,12 @@ impl Hnsw {
             query
         };
         let ef = ef_search.max(k).max(1);
-        let (store, graph) = (&self.store, &self.graph);
         dispatch!(self.simd_level, simd => {
-            let mut ep = Cand { dist: store.dist(simd, q, ep_id), id: ep_id };
+            let mut ep = Cand { dist: view.dist(simd, q, ep_id), id: ep_id };
             for level in (1..=entry.max_level).rev() {
-                ep = greedy(simd, store, graph, q, ep, level);
+                ep = greedy(simd, view, q, ep, level);
             }
-            search_layer(simd, store, graph, &mut scratch.search, q, ep, ef, 0, &mut scratch.found);
+            search_layer(simd, view, &mut scratch.search, q, ep, ef, 0, &mut scratch.found);
         });
         scratch.found.truncate(k);
         &scratch.found
@@ -511,7 +694,8 @@ impl Hnsw {
     /// parallel unless `threads == 1`.
     fn insert_all(&self, order: &[u32], threads: usize) {
         let n = self.len();
-        let (store, graph, params, level) = (&self.store, &self.graph, &self.params, self.simd_level);
+        let (store, graph) = self.build_parts();
+        let (params, level) = (&self.params, self.simd_level);
         let insert = |scratch: &mut Scratch, id: u32| {
             dispatch!(level, simd => insert_node(simd, store, graph, params, scratch, id));
         };
@@ -549,7 +733,8 @@ impl Hnsw {
     /// pruned by the refilling heuristic to `max_m0`. Each node reads and
     /// writes only its own lists, so nodes merge independently.
     fn merge_level0(&self, first: &Graph, threads: usize) {
-        let (store, graph, level) = (&self.store, &self.graph, self.simd_level);
+        let (store, graph) = self.build_parts();
+        let level = self.simd_level;
         let max_m0 = graph.max_m0;
         let merge = |buf: &mut LinkBuffers, id: u32| {
             dispatch!(level, simd => {
@@ -582,19 +767,28 @@ impl Hnsw {
 
     #[cfg(test)]
     pub(crate) fn graph(&self) -> &Graph {
-        &self.graph
+        self.build_parts().1
     }
 
     /// Level sizes and mean degrees, for comparing graph shape with NMSLIB.
     pub fn stats(&self) -> GraphStats {
-        let g = &self.graph;
-        let levels = if g.entry().is_some() { g.max_level() + 1 } else { 0 };
+        match &self.repr {
+            Repr::Build { store, graph } => stats_of(&BuildView { store, graph }),
+            Repr::Mapped(m) => stats_of(&m.view()),
+        }
+    }
+}
+
+fn stats_of<V: View>(v: &V) -> GraphStats {
+    {
+        let entry = v.entry();
+        let levels = if entry.node.is_some() { entry.max_level + 1 } else { 0 };
         let mut nodes_per_level = vec![0usize; levels];
         let mut edges_per_level = vec![0usize; levels];
-        for id in 0..self.len() as u32 {
-            for level in 0..=g.level(id) {
+        for id in 0..v.len() as u32 {
+            for level in 0..=v.level(id) {
                 nodes_per_level[level] += 1;
-                edges_per_level[level] += g.neighbors(id, level).count();
+                edges_per_level[level] += v.neighbors(id, level).count();
             }
         }
         let mean_degree = nodes_per_level
@@ -642,14 +836,15 @@ fn insert_node<S: Simd>(
     };
     let max_level = entry.max_level;
 
+    let view = BuildView { store, graph };
     let q = store.vector(id);
     let mut ep = Cand { dist: store.dist(simd, q, entry_id), id: entry_id };
     for l in (level + 1..=max_level).rev() {
-        ep = greedy(simd, store, graph, q, ep, l);
+        ep = greedy(simd, &view, q, ep, l);
     }
     let Scratch { search, found, selected, link, .. } = scratch;
     for l in (0..=level.min(max_level)).rev() {
-        search_layer(simd, store, graph, search, q, ep, params.ef_construction, l, found);
+        search_layer(simd, &view, search, q, ep, params.ef_construction, l, found);
         select_neighbors(simd, store, found, params.m, false, selected, &mut link.rejected);
         // NMSLIB links farthest first; the closest selected seeds the next level.
         for c in selected.iter().rev() {
@@ -664,15 +859,15 @@ fn insert_node<S: Simd>(
 }
 
 /// Greedy walk at one level: move to any strictly closer neighbor until none.
-fn greedy<S: Simd>(simd: S, store: &Store, graph: &Graph, q: &[f32], ep: Cand, level: usize) -> Cand {
+fn greedy<S: Simd, V: View>(simd: S, view: &V, q: &[f32], ep: Cand, level: usize) -> Cand {
     simd.vectorize(
         #[inline(always)]
         || {
             let mut cur = ep;
             loop {
                 let mut changed = false;
-                for nb in graph.neighbors(cur.id, level) {
-                    let d = store.dist(simd, q, nb);
+                for nb in view.neighbors(cur.id, level) {
+                    let d = view.dist(simd, q, nb);
                     if d < cur.dist {
                         cur = Cand { dist: d, id: nb };
                         changed = true;
@@ -689,10 +884,9 @@ fn greedy<S: Simd>(simd: S, store: &Store, graph: &Graph, q: &[f32], ep: Cand, l
 /// Beam search at one level from a single entry point. Writes up to `ef`
 /// nodes, nearest first, to `out`.
 #[allow(clippy::too_many_arguments)]
-fn search_layer<S: Simd>(
+fn search_layer<S: Simd, V: View>(
     simd: S,
-    store: &Store,
-    graph: &Graph,
+    view: &V,
     buf: &mut SearchBuffers,
     q: &[f32],
     ep: Cand,
@@ -723,14 +917,14 @@ fn search_layer<S: Simd>(
                 // Mark and prefetch all unvisited neighbors first, then
                 // compute distances, so their cache misses overlap.
                 fresh.clear();
-                fresh.extend(graph.neighbors(c.id, level));
+                fresh.extend(view.neighbors(c.id, level));
                 for &nb in fresh.iter() {
                     prefetch_in(simd, visited.slot_memory(nb));
                 }
                 fresh.retain(|&nb| {
                     let new = visited.insert(nb);
                     if new {
-                        prefetch_in(simd, store.vector(nb));
+                        prefetch_in(simd, view.vector(nb));
                     }
                     new
                 });
@@ -739,7 +933,7 @@ fn search_layer<S: Simd>(
                     {
                         n_dist += 1;
                     }
-                    let d = store.dist(simd, q, nb);
+                    let d = view.dist(simd, q, nb);
                     if results.len() < ef || d < results.peek().unwrap().dist {
                         let cand = Cand { dist: d, id: nb };
                         candidates.push(Reverse(cand));
@@ -751,7 +945,7 @@ fn search_layer<S: Simd>(
                 }
                 // Start loading the list of the node expanded next.
                 if let Some(Reverse(next)) = candidates.peek() {
-                    prefetch_in(simd, graph.list_memory(next.id, level));
+                    view.prefetch_list(simd, next.id, level);
                 }
             }
             #[cfg(feature = "counters")]

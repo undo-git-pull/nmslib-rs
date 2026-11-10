@@ -48,12 +48,13 @@ fn hand_built_graph_search() {
         let q = [3.9f32];
         let ep = Cand { dist: store.dist(simd, &q, 0), id: 0 };
         // ef = 1 is a greedy walk along the path to the nearest point.
-        search_layer(simd, &store, &g, &mut buf, &q, ep, 1, 0, &mut found);
+        let view = BuildView { store: &store, graph: &g };
+        search_layer(simd, &view, &mut buf, &q, ep, 1, 0, &mut found);
         assert_eq!(found.iter().map(|c| c.id).collect::<Vec<_>>(), [4]);
-        search_layer(simd, &store, &g, &mut buf, &q, ep, 3, 0, &mut found);
+        search_layer(simd, &view, &mut buf, &q, ep, 3, 0, &mut found);
         assert_eq!(found.iter().map(|c| c.id).collect::<Vec<_>>(), [4, 3, 2]);
         assert!(found.windows(2).all(|w| w[0].dist <= w[1].dist));
-        assert_eq!(greedy(simd, &store, &g, &q, ep, 0).id, 4);
+        assert_eq!(greedy(simd, &view, &q, ep, 0).id, 4);
     });
 }
 

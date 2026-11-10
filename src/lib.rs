@@ -1,3 +1,4 @@
+pub mod frozen;
 pub mod hnsw;
 pub mod simd;
 pub mod visited;
@@ -11,9 +12,12 @@ mod rhnsw {
         IntoPyArray, PyArray2, PyArrayDescrMethods, PyArrayMethods, PyUntypedArray,
         PyUntypedArrayMethods, dtype,
     };
-    use pyo3::exceptions::PyValueError;
+    use std::path::PathBuf;
+
+    use pyo3::exceptions::{PyRuntimeError, PyValueError};
     use pyo3::prelude::*;
 
+    use crate::frozen::LoadError;
     use crate::hnsw::{Hnsw, Params, Space};
 
     /// SIMD instruction set the distance kernels use on this machine.
@@ -31,7 +35,6 @@ mod rhnsw {
     #[pyclass(module = "rhnsw")]
     struct Index {
         inner: Hnsw,
-        space: &'static str,
         ef: usize,
     }
 
@@ -50,9 +53,9 @@ mod rhnsw {
             seed: u64,
             post: bool,
         ) -> PyResult<Self> {
-            let (space, name) = match space {
-                "l2" => (Space::L2, "l2"),
-                "cosine" => (Space::Cosine, "cosine"),
+            let space = match space {
+                "l2" => Space::L2,
+                "cosine" => Space::Cosine,
                 other => {
                     return Err(PyValueError::new_err(format!(
                         "space must be \"l2\" or \"cosine\", got {other:?}"
@@ -69,7 +72,37 @@ mod rhnsw {
                 return Err(PyValueError::new_err("ef_construction must be positive"));
             }
             let params = Params { m: M, ef_construction, post, seed };
-            Ok(Self { inner: Hnsw::new(dim, space, params), space: name, ef: 10 })
+            Ok(Self { inner: Hnsw::new(dim, space, params), ef: 10 })
+        }
+
+        /// Saves the index to `path`. Writes a temporary file in the same
+        /// directory and renames it over `path`, so processes that have the
+        /// old file memory-mapped keep a valid mapping.
+        fn save(&self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
+            let inner = &self.inner;
+            py.detach(|| inner.save(&path))?;
+            Ok(())
+        }
+
+        /// Loads an index saved with `save`.
+        ///
+        /// With `mmap=True` the file is mapped read-only: every process that
+        /// maps the same file shares one copy in the OS page cache, loading
+        /// reads almost nothing until queries touch the data, and `add_items`
+        /// raises. The file must not be modified or truncated while it is
+        /// mapped (replacing it with `save` is fine). With `mmap=False` the
+        /// index is copied into memory and can grow.
+        ///
+        /// Raises `ValueError` if the file is not a valid index this version
+        /// can read, and `OSError` if it cannot be read.
+        #[staticmethod]
+        #[pyo3(signature = (path, mmap = true))]
+        fn load(py: Python<'_>, path: PathBuf, mmap: bool) -> PyResult<Self> {
+            let inner = py.detach(|| Hnsw::load(&path, mmap)).map_err(|e| match e {
+                LoadError::Io(e) => PyErr::from(e),
+                LoadError::Format(msg) => PyValueError::new_err(format!("{}: {msg}", path.display())),
+            })?;
+            Ok(Self { inner, ef: 10 })
         }
 
         /// Adds vectors, a C-contiguous float32 array of shape (n, dim).
@@ -82,6 +115,11 @@ mod rhnsw {
             vectors: &Bound<'_, PyAny>,
             num_threads: usize,
         ) -> PyResult<()> {
+            if self.inner.is_read_only() {
+                return Err(PyRuntimeError::new_err(
+                    "index is memory-mapped and read-only; load it with mmap=False to add items",
+                ));
+            }
             let (_, data) = copy_matrix(vectors, self.inner.dim(), "vectors")?;
             let inner = &mut self.inner;
             py.detach(|| inner.add_vec(data, num_threads));
@@ -132,7 +170,16 @@ mod rhnsw {
 
         #[getter]
         fn space(&self) -> &'static str {
-            self.space
+            match self.inner.space() {
+                Space::L2 => "l2",
+                Space::Cosine => "cosine",
+            }
+        }
+
+        /// True for an index loaded with `mmap=True`.
+        #[getter]
+        fn read_only(&self) -> bool {
+            self.inner.is_read_only()
         }
 
         #[getter]
@@ -146,11 +193,12 @@ mod rhnsw {
 
         fn __repr__(&self) -> String {
             format!(
-                "rhnsw.Index(dim={}, space={:?}, len={}, ef={})",
+                "rhnsw.Index(dim={}, space={:?}, len={}, ef={}{})",
                 self.inner.dim(),
-                self.space,
+                self.space(),
                 self.inner.len(),
-                self.ef
+                self.ef,
+                if self.inner.is_read_only() { ", read_only=True" } else { "" }
             )
         }
     }

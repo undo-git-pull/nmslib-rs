@@ -159,3 +159,29 @@ on 1M, and 1.10 to 1.22x on 100k. Not done: NMSLIB also stores each node's
 level-0 links next to its vector. That would save one miss per expansion
 (about 5% at efSearch 80), but needs a second, frozen layout for queries to
 stay in safe Rust, since the build's lists are atomics.
+
+## Saved indexes (phase 6)
+
+Format: see `src/frozen.rs`. Level 0 stores each node's list (count plus
+`2M` ids, padded to whole cache lines) directly before its vector, which is
+the layout of NMSLIB's optimized index; upper levels, per-node levels and
+offsets are separate sections. The header carries an FNV-1a checksum.
+`load(mmap=True)` validates the header, levels and offsets (about 10 ms for
+1M nodes with the file evicted from the page cache) and reads neighbor lists
+defensively instead of scanning them.
+
+Measured on SIFT 1M (results in `bench/results/saved_*.json`,
+`mmap_pss_*.json`, `rhnsw_1M_mmap.json`):
+
+- Mapped and copied loads return bit-identical labels and distances to the
+  in-memory index for every query at every efSearch, on SIFT 1M and
+  GloVe-100.
+- 8 processes mapping the 684 MB file: summed PSS 909 MB (8 private copies:
+  5,312 MB). Each process's RSS shows the whole file; its PSS share is 1/8.
+- Queries on the mapped index are 1.20 to 1.24x faster than on the in-memory
+  index (1.22 to 1.32x native NMSLIB), more than the ~5% estimated from the
+  phase 5 profile: with the interleaved layout the list of a node about to be
+  expanded is usually already in cache from computing that node's distance.
+- A cold mapped index (file evicted from the page cache) is about 10x slower
+  for its first thousand queries (1.2 s against 0.12 s warm at efSearch 80),
+  then matches the warm numbers.
