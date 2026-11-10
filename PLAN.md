@@ -88,7 +88,9 @@ Gate: tests pass, and the SIMD kernels are clearly faster than scalar at dim 128
 - Build: `nmslib.init(method='hnsw', space='l2')`, `addDataPointBatch`, `createIndex({'M': 16, 'efConstruction': 200, 'post': 2}, print_progress=True)`. Use a fixed `indexThreadQty`.
 - Query: for `efSearch` in `[10, 20, 40, 80, 160, 320, 640]`, call `setQueryTimeParams` and `knnQueryBatch(queries, k=10, num_threads=1)`.
 - Record recall@10 against ground truth, queries per second, build time and peak memory for each setting.
-- Run the build twice with the base vectors shuffled into two different insertion orders, and record how far recall moves between the two builds at each `efSearch`. This gives the noise band for the parity check.
+- Build several times with the base vectors shuffled into different insertion orders (10 builds on 100k, 2 on 1M), and record how far recall moves between builds at each `efSearch`. This gives the noise band for the parity check.
+
+Parity rule (used by the gates in phases 3, 4 and 5): at each `efSearch`, rhnsw passes if `|recall - recall_mean| <= tolerance`, where `tolerance` is the larger of the measured band's half-width around the NMSLIB mean and 0.5 percentage points. The baseline JSON stores `tolerance` per `efSearch`. Two builds alone gave bands as narrow as 0.003 points on 100k, too tight to separate a real difference from noise.
 - Run on the 100k prefix first, then on the full 1M set.
 
 Gate: baseline JSON files exist for 100k and 1M, including the noise band.
@@ -115,7 +117,7 @@ Tests:
 - Structural invariants after building 10k random vectors: no self-loops, no duplicate edges, degree at most `M` (upper levels) or `2 * M` (level 0), every node reachable from the entry point at level 0.
 - Recall@10 above 0.99 against brute force on 10k vectors at a high `ef_search`.
 
-Gate: all tests pass and recall on the 100k subset is within the noise band of the NMSLIB baseline at the matching `efSearch` values. If recall is below NMSLIB, compare average level-0 degree, level distribution and neighbor-selection behavior against `NOTES.md` before touching anything else.
+Gate: all tests pass and recall on the 100k subset meets the parity rule (phase 2) against the NMSLIB baseline at the matching `efSearch` values. If recall is below NMSLIB, compare average level-0 degree, level distribution and neighbor-selection behavior against `NOTES.md` before touching anything else.
 
 ## Phase 4: Python binding and evaluation
 
@@ -132,7 +134,7 @@ Release the GIL during build and query. Validate dtype (`float32`), shape and co
 
 `bench/eval_recall.py` loads the dataset, runs the same `efSearch` sweep as the baseline, and writes results in the same JSON format. A second script prints the two curves side by side (recall@10 vs `efSearch`, with QPS).
 
-Gate: recall curves on 100k are within the noise band across the whole sweep.
+Gate: recall curves on 100k meet the parity rule (phase 2) across the whole sweep.
 
 ## Phase 5: parallel build and the 1M run
 
@@ -141,7 +143,7 @@ Gate: recall curves on 100k are within the noise band across the whole sweep.
 - Re-run the 100k comparison to confirm parallel build does not lower recall.
 - Run the full 1M comparison with the same `M`, `ef_construction` and `efSearch` sweep as the NMSLIB baseline.
 
-Gate (the project's success criterion): at each `efSearch` value, recall@10 on 1M is within the measured NMSLIB noise band, or within 0.5 percentage points if the measured band is narrower. Report build time, QPS and peak memory next to the NMSLIB numbers.
+Gate (the project's success criterion): at each `efSearch` value, recall@10 on 1M meets the parity rule (phase 2): within the measured NMSLIB noise band, or within 0.5 percentage points if the measured band is narrower. Report build time, QPS and peak memory next to the NMSLIB numbers.
 
 ## Phase 6: Mac manual test
 

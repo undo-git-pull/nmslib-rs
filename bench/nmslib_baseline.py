@@ -1,8 +1,10 @@
 """NMSLIB HNSW baseline on SIFT: recall@10, QPS, build time and memory.
 
-Builds the index twice, each from a different shuffled insertion order, and
-records how far recall moves between the two builds at each efSearch. That
-spread is the noise band for the rhnsw parity check.
+Builds the index several times, each from a different shuffled insertion
+order, and records how far recall moves between builds at each efSearch.
+That spread is the noise band for the rhnsw parity check: rhnsw passes at an
+efSearch if |recall - recall_mean| <= tolerance, where tolerance is the
+larger of the band's half-width around the mean and 0.5 percentage points.
 
     python bench/nmslib_baseline.py --n 100000
     python bench/nmslib_baseline.py --n 1000000
@@ -25,7 +27,8 @@ import numpy as np
 import common
 
 POST = 2
-SEEDS = [1, 2]
+# Minimum half-width of the parity band, in recall (0.5 percentage points).
+MIN_TOLERANCE = 0.005
 
 
 def run_build(n: int, seed: int, threads: int) -> dict:
@@ -94,7 +97,10 @@ def noise_band(builds: list[dict]) -> list[dict]:
             "recall_min": round(min(rs), 6),
             "recall_max": round(max(rs), 6),
             "recall_mean": round(float(np.mean(rs)), 6),
+            "recall_std": round(float(np.std(rs, ddof=1)), 6),
             "spread": round(max(rs) - min(rs), 6),
+            "tolerance": round(max(max(rs) - np.mean(rs), np.mean(rs) - min(rs),
+                                   MIN_TOLERANCE), 6),
         })
     return band
 
@@ -102,6 +108,8 @@ def noise_band(builds: list[dict]) -> list[dict]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--n", type=int, default=100_000, help="base vectors (prefix of SIFT1M)")
+    ap.add_argument("--builds", type=int, default=2,
+                    help="independent builds (insertion-order seeds 1..N)")
     ap.add_argument("--threads", type=int, default=32, help="indexThreadQty for the build")
     ap.add_argument("--out", help="output JSON (default bench/results/nmslib_<n>.json)")
     args = ap.parse_args()
@@ -113,7 +121,7 @@ def main() -> None:
 
     ctx = mp.get_context("spawn")
     builds = []
-    for seed in SEEDS:
+    for seed in range(1, args.builds + 1):
         with ctx.Pool(1) as pool:
             builds.append(pool.apply(run_build, (args.n, seed, args.threads)))
 
