@@ -1,4 +1,4 @@
-"""Phase 3 evaluation: rhnsw (Rust, single-threaded build) vs the NMSLIB baseline.
+"""Phase 3 evaluation: nmslib_rs (Rust, single-threaded build) vs the NMSLIB baseline.
 
 Exports the SIFT prefix as raw f32, runs examples/eval_sift.rs for several
 insertion orders, scores recall with common.recall (the same metric as the
@@ -63,7 +63,7 @@ def main() -> None:
     parity = common.parity(baseline, builds)
 
     result = {
-        "library": "rhnsw",
+        "library": "nmslib_rs",
         "dataset": "sift-128-euclidean",
         "n_base": args.n,
         "n_queries": len(queries),
@@ -75,13 +75,13 @@ def main() -> None:
         "parity_vs_nmslib": parity,
         "all_pass": all(p["pass"] for p in parity),
     }
-    out = common.RESULTS_DIR / f"rhnsw_{common.size_label(args.n)}_phase3.json"
+    out = common.RESULTS_DIR / f"nmslib_rs_{common.size_label(args.n)}_phase3.json"
     out.write_text(json.dumps(result, indent=2))
 
     nm_qps = {r["ef_search"]: r["qps"] for r in baseline["builds"][0]["sweep"]}
-    print(f"\nrhnsw {common.size_label(args.n)}: {len(builds)} builds, build time "
+    print(f"\nnmslib_rs {common.size_label(args.n)}: {len(builds)} builds, build time "
           f"{[b['build_time_s'] for b in builds]} s (1 thread)")
-    print(f"{'ef':>4}  {'rhnsw':>8} {'nmslib':>8} {'diff':>8} {'worst':>8} {'tol':>6}  "
+    print(f"{'ef':>4}  {'nmslib_rs':>8} {'nmslib':>8} {'diff':>8} {'worst':>8} {'tol':>6}  "
           f"{'pass':4}  {'qps rh':>8} {'qps nm':>8}")
     for p, i in zip(parity, range(len(parity))):
         print(f"{p['ef_search']:>4}  {p['recall_mean']:8.5f} {p['reference_recall_mean']:8.5f} "

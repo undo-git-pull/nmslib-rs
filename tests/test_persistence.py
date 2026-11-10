@@ -5,7 +5,7 @@ import multiprocessing as mp
 import numpy as np
 import pytest
 
-import rhnsw
+import nmslib_rs
 
 
 def random(n, dim, seed=0):
@@ -15,9 +15,9 @@ def random(n, dim, seed=0):
 @pytest.fixture(scope="module")
 def saved(tmp_path_factory):
     data = random(4000, 16)
-    index = rhnsw.Index(dim=16, space="cosine", M=16, ef_construction=100, seed=1)
+    index = nmslib_rs.Index(dim=16, space="cosine", M=16, ef_construction=100, seed=1)
     index.add_items(data)
-    path = tmp_path_factory.mktemp("idx") / "cosine.rhnsw"
+    path = tmp_path_factory.mktemp("idx") / "cosine.nmslib_rs"
     index.save(path)
     return index, path, data
 
@@ -25,7 +25,7 @@ def saved(tmp_path_factory):
 @pytest.mark.parametrize("mmap", [True, False])
 def test_round_trip_is_exact(saved, mmap):
     index, path, _ = saved
-    loaded = rhnsw.Index.load(path, mmap=mmap)
+    loaded = nmslib_rs.Index.load(path, mmap=mmap)
     assert loaded.read_only is mmap
     assert (len(loaded), loaded.dim, loaded.space) == (len(index), index.dim, index.space)
     queries = random(300, 16, 2)
@@ -38,52 +38,52 @@ def test_round_trip_is_exact(saved, mmap):
 
 def test_load_accepts_str_paths(saved):
     _, path, _ = saved
-    assert len(rhnsw.Index.load(str(path))) == 4000
+    assert len(nmslib_rs.Index.load(str(path))) == 4000
 
 
 def test_mapped_index_is_read_only(saved):
     _, path, data = saved
-    mapped = rhnsw.Index.load(path)
+    mapped = nmslib_rs.Index.load(path)
     assert "read_only=True" in repr(mapped)
     with pytest.raises(RuntimeError, match="mmap=False"):
         mapped.add_items(data[:10])
-    copy = rhnsw.Index.load(path, mmap=False)
+    copy = nmslib_rs.Index.load(path, mmap=False)
     copy.add_items(data[:10])
     assert len(copy) == 4010
 
 
 def test_bad_and_missing_files(tmp_path, saved):
     _, path, _ = saved
-    bad = tmp_path / "bad.rhnsw"
+    bad = tmp_path / "bad.nmslib_rs"
     bad.write_bytes(b"not an index" * 100)
     with pytest.raises(ValueError, match="magic"):
-        rhnsw.Index.load(bad)
-    truncated = tmp_path / "truncated.rhnsw"
+        nmslib_rs.Index.load(bad)
+    truncated = tmp_path / "truncated.nmslib_rs"
     truncated.write_bytes(path.read_bytes()[:-100])
     with pytest.raises(ValueError):
-        rhnsw.Index.load(truncated)
+        nmslib_rs.Index.load(truncated)
     with pytest.raises(FileNotFoundError):
-        rhnsw.Index.load(tmp_path / "missing.rhnsw")
+        nmslib_rs.Index.load(tmp_path / "missing.nmslib_rs")
 
 
 def test_save_replaces_a_mapped_file(tmp_path):
-    path = tmp_path / "replace.rhnsw"
-    first = rhnsw.Index(dim=8, seed=1)
+    path = tmp_path / "replace.nmslib_rs"
+    first = nmslib_rs.Index(dim=8, seed=1)
     first.add_items(random(500, 8, 3))
     first.save(path)
-    mapped = rhnsw.Index.load(path)
+    mapped = nmslib_rs.Index.load(path)
     queries = random(20, 8, 4)
     before = mapped.knn_query(queries, k=5)[0]
-    second = rhnsw.Index(dim=8, seed=2)
+    second = nmslib_rs.Index(dim=8, seed=2)
     second.add_items(random(800, 8, 5))
     second.save(path)
     assert (mapped.knn_query(queries, k=5)[0] == before).all()
-    assert len(rhnsw.Index.load(path)) == 800
+    assert len(nmslib_rs.Index.load(path)) == 800
 
 
 def _query_mapped(args):
     path, queries = args
-    index = rhnsw.Index.load(path, mmap=True)
+    index = nmslib_rs.Index.load(path, mmap=True)
     index.set_ef(50)
     return index.knn_query(queries, k=10, num_threads=1)[0]
 

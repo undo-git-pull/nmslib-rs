@@ -6,7 +6,7 @@ pub mod visited;
 use pyo3::prelude::*;
 
 #[pymodule]
-mod rhnsw {
+mod nmslib_rs {
     use numpy::ndarray::Array2;
     use numpy::{
         IntoPyArray, PyArray2, PyArrayDescrMethods, PyArrayMethods, PyUntypedArray,
@@ -32,7 +32,7 @@ mod rhnsw {
     /// `1 - cosine similarity` for `space="cosine"`. Labels are the insertion
     /// positions of the vectors, starting at 0 and continuing across calls to
     /// `add_items`.
-    #[pyclass(module = "rhnsw")]
+    #[pyclass(module = "nmslib_rs")]
     struct Index {
         inner: Hnsw,
         ef: usize,
@@ -199,7 +199,7 @@ mod rhnsw {
 
         fn __repr__(&self) -> String {
             format!(
-                "rhnsw.Index(dim={}, space={:?}, len={}, ef={}{})",
+                "nmslib_rs.Index(dim={}, space={:?}, len={}, ef={}{})",
                 self.inner.dim(),
                 self.space(),
                 self.inner.len(),

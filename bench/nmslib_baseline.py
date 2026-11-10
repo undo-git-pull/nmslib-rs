@@ -2,7 +2,7 @@
 
 Builds the index several times, each from a different shuffled insertion
 order, and records how far recall moves between builds at each efSearch.
-That spread is the noise band for the rhnsw parity check: rhnsw passes at an
+That spread is the noise band for the nmslib_rs parity check: nmslib_rs passes at an
 efSearch if |recall - recall_mean| <= tolerance, where tolerance is the
 larger of the band's half-width around the mean and 0.5 percentage points.
 

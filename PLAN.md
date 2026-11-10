@@ -31,7 +31,7 @@ Every phase below runs first on a 100k prefix of the dataset. The full 1M run ha
 ## Layout
 
 ```
-rhnsw/
+nmslib-rs/
   Cargo.toml
   pyproject.toml          # maturin build backend
   NOTES.md                # NMSLIB behaviors found while reading the source
@@ -54,7 +54,7 @@ rhnsw/
 - Create a Python 3.12 or 3.13 virtual environment (NMSLIB publishes wheels for 3.8 to 3.13) and install `nmslib`, `numpy`, `h5py`.
 - Download the dataset into `bench/data/`.
 
-Gate: `import rhnsw` works and `import nmslib` works in the same environment.
+Gate: `import nmslib_rs` works and `import nmslib` works in the same environment.
 
 ## Phase 1: fearless_simd smoke test
 
@@ -91,7 +91,7 @@ Gate: tests pass, and the SIMD kernels are clearly faster than scalar at dim 128
 - Record recall@10 against ground truth, queries per second, build time and peak memory for each setting.
 - Build several times with the base vectors shuffled into different insertion orders (10 builds on 100k, 2 on 1M), and record how far recall moves between builds at each `efSearch`. This gives the noise band for the parity check.
 
-Parity rule (used by the gates in phases 3, 4 and 5): at each `efSearch`, rhnsw passes if `|recall - recall_mean| <= tolerance`, where `tolerance` is the larger of the measured band's half-width around the NMSLIB mean and 0.5 percentage points. The baseline JSON stores `tolerance` per `efSearch`. Two builds alone gave bands as narrow as 0.003 points on 100k, too tight to separate a real difference from noise.
+Parity rule (used by the gates in phases 3, 4 and 5): at each `efSearch`, nmslib-rs passes if `|recall - recall_mean| <= tolerance`, where `tolerance` is the larger of the measured band's half-width around the NMSLIB mean and 0.5 percentage points. The baseline JSON stores `tolerance` per `efSearch`. Two builds alone gave bands as narrow as 0.003 points on 100k, too tight to separate a real difference from noise.
 - Run on the 100k prefix first, then on the full 1M set.
 
 Gate: baseline JSON files exist for 100k and 1M, including the noise band.
@@ -125,7 +125,7 @@ Gate: all tests pass and recall on the 100k subset meets the parity rule (phase 
 Minimal API:
 
 ```python
-index = rhnsw.Index(dim=128, space="l2", M=16, ef_construction=200, seed=0)
+index = nmslib_rs.Index(dim=128, space="l2", M=16, ef_construction=200, seed=0)
 index.add_items(vectors)               # float32 array, shape (n, dim)
 index.set_ef(80)
 labels, distances = index.knn_query(queries, k=10)   # shape (nq, k)
@@ -150,7 +150,7 @@ Gate (the project's success criterion): at each `efSearch` value, recall@10 on 1
 
 Goal: several Python processes query one index while the machine holds a single copy of it. A saved index is read-only; mapping the file lets the OS page cache share its pages between every process that maps it. Today each process would build or hold its own copy (about 670 MB for SIFT1M).
 
-File format (rhnsw's own, little-endian, versioned; not compatible with NMSLIB):
+File format (nmslib-rs's own, little-endian, versioned; not compatible with NMSLIB):
 
 - Header: magic bytes, format version, `dim`, space, `M`, `maxM0`, node count, entry point, max level, and the offset and length of every section. Every section starts on a 64-byte boundary.
 - Level-0 section: one fixed-stride block per node holding the vector followed by its level-0 list (count plus up to `2 * M` ids), padded to whole cache lines. This is NMSLIB's interleaved layout (NOTES.md, "Query performance"): expanding a node finds its list next to the vector already fetched for its distance, which the phase 5 profile put at about one cache miss per expansion.
@@ -161,8 +161,8 @@ API:
 
 ```python
 index.save(path)                              # writes a temp file, then renames it over `path`
-ro = rhnsw.Index.load(path, mmap=True)        # read-only, pages shared between processes
-rw = rhnsw.Index.load(path, mmap=False)       # private copy in memory; add_items allowed
+ro = nmslib_rs.Index.load(path, mmap=True)        # read-only, pages shared between processes
+rw = nmslib_rs.Index.load(path, mmap=False)       # private copy in memory; add_items allowed
 ```
 
 - `add_items` on a memory-mapped index raises an error.

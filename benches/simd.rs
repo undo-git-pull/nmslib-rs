@@ -4,7 +4,7 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use fearless_simd::{Level, dispatch};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
-use rhnsw::simd::{
+use nmslib_rs::simd::{
     dot, dot_in, dot_scalar, l2_sq, l2_sq_in, l2_sq_scalar, selected_level_name,
 };
 

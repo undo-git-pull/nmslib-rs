@@ -6,7 +6,7 @@ alive. PSS splits shared pages between the processes that map them, so the
 group's summed PSS is its real footprint; RSS counts shared pages once per
 process.
 
-- baseline: imports rhnsw and NumPy and holds the queries, no index;
+- baseline: imports nmslib_rs and NumPy and holds the queries, no index;
 - mapped: Index.load(path, mmap=True), then every query at efSearch 640,
   which touches nearly every node of the index;
 - copy: Index.load(path, mmap=False), the same queries (for contrast).
@@ -14,7 +14,7 @@ process.
 Gate: summed PSS of the mapped group <= 1.1 * (file size + summed PSS of the
 baseline group).
 
-    python bench/mmap_pss.py --index bench/data/rhnsw_sift_1M.rhnsw
+    python bench/mmap_pss.py --index bench/data/nmslib_rs_sift_1M.nmslib_rs
 """
 
 from __future__ import annotations
@@ -48,10 +48,10 @@ def mem_kb(path: str) -> dict:
 
 
 def worker(mode: str, path: str, queries, done, measured, results) -> None:
-    import rhnsw
+    import nmslib_rs
 
     if mode != "baseline":
-        index = rhnsw.Index.load(path, mmap=(mode == "mapped"))
+        index = nmslib_rs.Index.load(path, mmap=(mode == "mapped"))
         index.set_ef(640)
         index.knn_query(queries, k=10, num_threads=1)
     done.wait()

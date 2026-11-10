@@ -23,7 +23,7 @@ import time
 import numpy as np
 
 import common
-import rhnsw
+import nmslib_rs
 
 
 def evict(path) -> None:
@@ -44,9 +44,9 @@ def main() -> None:
     ds = common.DATASETS[args.dataset]
     base, queries = common.load(ds, None)
     label = f"{args.dataset}_{common.size_label(len(base))}"
-    path = common.DATA_DIR / f"rhnsw_{label}.rhnsw"
+    path = common.DATA_DIR / f"nmslib_rs_{label}.nmslib_rs"
 
-    index = rhnsw.Index(dim=base.shape[1], space=ds.metric, M=common.M,
+    index = nmslib_rs.Index(dim=base.shape[1], space=ds.metric, M=common.M,
                         ef_construction=common.EF_CONSTRUCTION, seed=1)
     t0 = time.perf_counter()
     index.add_items(base, num_threads=args.threads)
@@ -61,12 +61,12 @@ def main() -> None:
     for mmap in (True, False):
         evict(path)
         t0 = time.perf_counter()
-        loaded = rhnsw.Index.load(path, mmap=mmap)
+        loaded = nmslib_rs.Index.load(path, mmap=mmap)
         loads[mmap] = (loaded, time.perf_counter() - t0)
 
     # Cold mapped index: evict the file, load, and time the first queries.
     evict(path)
-    cold = rhnsw.Index.load(path, mmap=True)
+    cold = nmslib_rs.Index.load(path, mmap=True)
     cold.set_ef(80)
     t0 = time.perf_counter()
     cold.knn_query(queries[:1], k=10, num_threads=1)

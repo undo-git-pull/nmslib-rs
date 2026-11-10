@@ -1,11 +1,11 @@
 [package]
-name = "rhnsw"
+name = "nmslib-rs"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 
 [lib]
-name = "rhnsw"
+name = "nmslib_rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

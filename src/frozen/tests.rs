@@ -10,9 +10,9 @@ use crate::hnsw::{Hnsw, Params};
 
 fn temp_file(name: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!("rhnsw-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("nmslib_rs-test-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
-    dir.join(format!("{name}-{}.rhnsw", NEXT.fetch_add(1, Ordering::Relaxed)))
+    dir.join(format!("{name}-{}.nmslib_rs", NEXT.fetch_add(1, Ordering::Relaxed)))
 }
 
 fn random_data(n: usize, dim: usize, seed: u64) -> Vec<f32> {

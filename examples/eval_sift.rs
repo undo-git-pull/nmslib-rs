@@ -1,4 +1,4 @@
-//! Builds rhnsw on exported SIFT vectors and runs the efSearch sweep on one
+//! Builds nmslib_rs on exported SIFT vectors and runs the efSearch sweep on one
 //! thread. Writes the found ids per efSearch and a JSON summary; recall is
 //! scored in Python with bench/common.py so it matches the NMSLIB baseline.
 //!
@@ -18,7 +18,7 @@ use std::time::Instant;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use rhnsw::hnsw::{Hnsw, Params, Space};
+use nmslib_rs::hnsw::{Hnsw, Params, Space};
 
 const K: usize = 10;
 const EF_SEARCH: [usize; 7] = [10, 20, 40, 80, 160, 320, 640];
@@ -91,7 +91,7 @@ fn main() {
         params.m,
         params.ef_construction,
         params.post,
-        rhnsw::simd::selected_level_name(),
+        nmslib_rs::simd::selected_level_name(),
         stats.nodes_per_level,
         stats.mean_degree.iter().map(|d| format!("{d:.3}")).collect::<Vec<_>>().join(", "),
         sweep.join(", "),

@@ -1,5 +1,5 @@
 {
-  "index_file": "/home/raylee/dev/nmslib-rs/bench/data/rhnsw_sift_1M.rhnsw",
+  "index_file": "/home/raylee/dev/nmslib-rs/bench/data/nmslib_rs_sift_1M.nmslib_rs",
   "file_mb": 684.3,
   "processes": 8,
   "queries_per_process": 10000,

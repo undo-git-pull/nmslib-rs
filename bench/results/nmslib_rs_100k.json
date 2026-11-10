@@ -1,5 +1,5 @@
 {
-  "library": "rhnsw",
+  "library": "nmslib_rs",
   "library_version": "0.1.0",
   "simd_level": "AVX-512",
   "dataset": "sift-128-euclidean",

@@ -1,4 +1,4 @@
-"""rhnsw on SIFT through the Python binding: recall@10, QPS, build time, memory.
+"""nmslib_rs on SIFT through the Python binding: recall@10, QPS, build time, memory.
 
 Mirrors nmslib_baseline.py: several builds from shuffled insertion orders,
 each in a fresh process, the same efSearch sweep on one query thread, and the
@@ -23,7 +23,7 @@ import common
 
 
 def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool) -> dict:
-    import rhnsw
+    import nmslib_rs
 
     ds = common.DATASETS[dataset]
     base, queries = common.load(ds, n)
@@ -31,7 +31,7 @@ def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool) -> dict
     order = np.random.default_rng(seed).permutation(len(base))
     shuffled = np.ascontiguousarray(base[order])
 
-    index = rhnsw.Index(dim=base.shape[1], space=ds.metric, M=common.M,
+    index = nmslib_rs.Index(dim=base.shape[1], space=ds.metric, M=common.M,
                         ef_construction=common.EF_CONSTRUCTION, seed=seed, post=True)
     common.reset_peak_rss()
     before = common.rss_mb()
@@ -43,11 +43,11 @@ def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool) -> dict
     mapped = {}
     if mmap:
         # Query a memory-mapped copy instead: save, drop the built index, load.
-        path = common.DATA_DIR / f".eval_recall_{os.getpid()}.rhnsw"
+        path = common.DATA_DIR / f".eval_recall_{os.getpid()}.nmslib_rs"
         index.save(path)
         del index
         t0 = time.perf_counter()
-        index = rhnsw.Index.load(path, mmap=True)
+        index = nmslib_rs.Index.load(path, mmap=True)
         mapped = {"queried": "memory-mapped saved index", "load_ms": round((time.perf_counter() - t0) * 1e3, 2),
                   "file_mb": round(path.stat().st_size / 2**20, 1)}
         path.unlink()  # the mapping stays valid after unlinking
@@ -98,7 +98,7 @@ def main() -> None:
                     help="build threads (NMSLIB baseline uses indexThreadQty=32; 1 = sequential)")
     ap.add_argument("--reference", help="NMSLIB JSON for the parity check "
                     "(default bench/results/nmslib_<dataset><n>.json)")
-    ap.add_argument("--out", help="output JSON (default bench/results/rhnsw_<n>.json)")
+    ap.add_argument("--out", help="output JSON (default bench/results/nmslib_rs_<n>.json)")
     args = ap.parse_args()
     ds = common.DATASETS[args.dataset]
     if args.n == 0:
@@ -108,7 +108,7 @@ def main() -> None:
     common.ground_truth(base, queries, ds=ds)
     del base, queries
 
-    import rhnsw
+    import nmslib_rs
 
     ctx = mp.get_context("spawn")
     builds = []
@@ -119,9 +119,9 @@ def main() -> None:
     reference = json.loads(open(args.reference or common.result_path("nmslib", ds, args.n)).read())
     parity = common.parity(reference, builds)
     result = {
-        "library": "rhnsw",
+        "library": "nmslib_rs",
         "library_version": "0.1.0",
-        "simd_level": rhnsw.simd_level(),
+        "simd_level": nmslib_rs.simd_level(),
         "dataset": ds.name,
         "space": ds.metric,
         "n_base": args.n,
@@ -138,7 +138,7 @@ def main() -> None:
         "parity_vs_nmslib": parity,
         "all_pass": all(p["pass"] for p in parity),
     }
-    out = args.out or common.result_path("rhnsw", ds, args.n)
+    out = args.out or common.result_path("nmslib_rs", ds, args.n)
     common.RESULTS_DIR.mkdir(exist_ok=True)
     with open(out, "w") as f:
         json.dump(result, f, indent=2)

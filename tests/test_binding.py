@@ -1,4 +1,4 @@
-"""Tests for the rhnsw Python binding. Run with: pytest tests/"""
+"""Tests for the nmslib_rs Python binding. Run with: pytest tests/"""
 
 import threading
 import time
@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pytest
 
-import rhnsw
+import nmslib_rs
 
 
 def random(n, dim, seed=0):
@@ -21,7 +21,7 @@ def brute_force(data, queries, k):
 @pytest.fixture(scope="module")
 def built():
     data = random(5000, 16)
-    index = rhnsw.Index(dim=16, space="l2", M=16, ef_construction=100, seed=0)
+    index = nmslib_rs.Index(dim=16, space="l2", M=16, ef_construction=100, seed=0)
     index.add_items(data)
     return data, index
 
@@ -58,7 +58,7 @@ def test_exact_match_is_first(built):
 
 
 def test_labels_continue_across_add_calls():
-    index = rhnsw.Index(dim=4, seed=1)
+    index = nmslib_rs.Index(dim=4, seed=1)
     a, b = random(50, 4, 3), random(50, 4, 4)
     index.add_items(a)
     index.add_items(b)
@@ -68,7 +68,7 @@ def test_labels_continue_across_add_calls():
 
 
 def test_fewer_items_than_k_pads():
-    index = rhnsw.Index(dim=3)
+    index = nmslib_rs.Index(dim=3)
     index.add_items(np.eye(3, dtype=np.float32))
     labels, dists = index.knn_query(np.zeros((1, 3), np.float32), k=5)
     assert sorted(labels[0, :3]) == [0, 1, 2]
@@ -76,7 +76,7 @@ def test_fewer_items_than_k_pads():
 
 
 def test_empty_inputs():
-    index = rhnsw.Index(dim=3)
+    index = nmslib_rs.Index(dim=3)
     index.add_items(np.zeros((0, 3), np.float32))
     labels, dists = index.knn_query(np.zeros((2, 3), np.float32), k=2)
     assert (labels == -1).all()
@@ -85,7 +85,7 @@ def test_empty_inputs():
 
 
 def test_cosine():
-    index = rhnsw.Index(dim=2, space="cosine")
+    index = nmslib_rs.Index(dim=2, space="cosine")
     index.add_items(np.array([[10, 0], [0, 3], [1, 1]], np.float32))
     labels, dists = index.knn_query(np.array([[0.5, 0]], np.float32), k=3)
     assert list(labels[0]) == [0, 2, 1]
@@ -117,7 +117,7 @@ def test_rejects_bad_params(built):
     _, index = built
     for kwargs in [dict(dim=0), dict(dim=4, space="ip"), dict(dim=4, M=1), dict(dim=4, ef_construction=0)]:
         with pytest.raises(ValueError):
-            rhnsw.Index(**kwargs)
+            nmslib_rs.Index(**kwargs)
     with pytest.raises(ValueError):
         index.set_ef(0)
     with pytest.raises(ValueError):
@@ -127,7 +127,7 @@ def test_rejects_bad_params(built):
 def test_releases_gil_during_build():
     """A Python thread keeps running while add_items works in Rust."""
     data = random(20000, 32, 5)
-    index = rhnsw.Index(dim=32, ef_construction=200)
+    index = nmslib_rs.Index(dim=32, ef_construction=200)
     ticks = 0
     done = threading.Event()
 
@@ -161,7 +161,7 @@ def test_parallel_query_matches_single_thread(built):
 
 def test_parallel_build_recall():
     data = random(5000, 16, 7)
-    index = rhnsw.Index(dim=16, ef_construction=100)
+    index = nmslib_rs.Index(dim=16, ef_construction=100)
     index.add_items(data, num_threads=8)
     index.set_ef(200)
     queries = random(100, 16, 8)
@@ -174,7 +174,7 @@ def test_sequential_build_is_deterministic():
     data = random(2000, 8, 9)
     results = []
     for _ in range(2):
-        index = rhnsw.Index(dim=8, seed=3)
+        index = nmslib_rs.Index(dim=8, seed=3)
         index.add_items(data, num_threads=1)
         results.append(index.knn_query(data[:50], k=5, num_threads=1)[0])
     assert (results[0] == results[1]).all()

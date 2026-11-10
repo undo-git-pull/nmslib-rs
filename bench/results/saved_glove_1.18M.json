@@ -1,7 +1,7 @@
 {
   "dataset": "glove-100-angular",
   "n_base": 1183514,
-  "file": "bench/data/rhnsw_glove_1.18M.rhnsw",
+  "file": "bench/data/nmslib_rs_glove_1.18M.nmslib_rs",
   "file_mb": 737.7,
   "build_s": 34.3,
   "build_threads": 32,

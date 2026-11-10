@@ -1,7 +1,7 @@
 {
   "dataset": "sift-128-euclidean",
   "n_base": 1000000,
-  "file": "bench/data/rhnsw_sift_1M.rhnsw",
+  "file": "bench/data/nmslib_rs_sift_1M.nmslib_rs",
   "file_mb": 684.3,
   "build_s": 24.19,
   "build_threads": 32,

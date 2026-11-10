@@ -96,10 +96,10 @@ any moment it holds ids `0..t` minus at most `indexThreadQty` in flight. The
 search locks each node while reading its neighbor list. Only an insert whose
 level exceeds `maxlevel_` takes `MaxLevelGuard_`, held until that insert ends.
 
-rhnsw matches the shared-counter scheduling. Splitting the order into
+nmslib-rs matches the shared-counter scheduling. Splitting the order into
 per-thread chunks (rayon's default `par_iter`) grows many parts of the order
 at once; on SIFT 100k with 32 threads that dropped mean level-0 degree from
-28.04 to 27.45 and recall at `efSearch = 10` by 0.5 points. rhnsw reads
+28.04 to 27.45 and recall at `efSearch = 10` by 0.5 points. nmslib-rs reads
 neighbor lists without locking (lists are atomics; a racing reader sees a
 valid old or partly rewritten list), which did not change degree or recall.
 
@@ -118,11 +118,11 @@ valid old or partly rewritten list), which did not change degree or recall.
 ## Distances
 
 The optimized index (built after `post`) uses squared L2 at query time.
-Construction uses the space's L2. Both orderings are the same, so rhnsw uses
+Construction uses the space's L2. Both orderings are the same, so nmslib-rs uses
 squared L2 throughout. Cosine normalizes stored vectors once and queries per
 call.
 
-## Consequences for rhnsw
+## Consequences for nmslib-rs
 
 - Select `M` (not `2M`) at level 0 during insert; cap level 0 at `2M`.
 - Overflow pruning reruns heuristic 2 without refill.
@@ -130,7 +130,7 @@ call.
   level 0. Without it, recall at a given `ef` will sit below the baseline.
 - Strict `<` / `>` comparisons as above, entry point = closest selected.
 
-## Query performance (rhnsw vs NMSLIB built with -march=native)
+## Query performance (nmslib-rs vs NMSLIB built with -march=native)
 
 Profiled on SIFT 1M (AMD Threadripper 7970X: 1 MB L2 per core, 32 MB L3
 per 8-core cluster) with `examples/query_profile.rs` and the `counters`
@@ -140,11 +140,11 @@ feature. `perf` was unavailable (no tools for the running kernel,
 - A cold distance cost about 95 ns; the same query repeated (cache-hot)
   cost 15 to 21 ns per distance. About 75% of query time was memory stalls:
   each neighbor's 512-byte vector is a cache miss, taken one after another.
-- At 100k the vectors fit in L3, which is why rhnsw matched NMSLIB there but
+- At 100k the vectors fit in L3, which is why nmslib-rs matched NMSLIB there but
   fell 5 to 14% behind at 1M.
 
 NMSLIB's optimized search prefetches neighbor vectors, the visited-array
-slots, and the next node's link list. rhnsw now does the same, in safe code
+slots, and the next node's link list. nmslib-rs now does the same, in safe code
 through a fearless_simd `kernel!` with an `Sse2` token (a no-op on ARM,
 where the prefetch intrinsic is not stable):
 
@@ -171,7 +171,7 @@ offsets are separate sections. The header carries an FNV-1a checksum.
 defensively instead of scanning them.
 
 Measured on SIFT 1M (results in `bench/results/saved_*.json`,
-`mmap_pss_*.json`, `rhnsw_1M_mmap.json`):
+`mmap_pss_*.json`, `nmslib_rs_1M_mmap.json`):
 
 - Mapped and copied loads return bit-identical labels and distances to the
   in-memory index for every query at every efSearch, on SIFT 1M and

@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use rhnsw::hnsw::{Hnsw, Params, Space};
+use nmslib_rs::hnsw::{Hnsw, Params, Space};
 
 fn read_matrix(path: &Path) -> (usize, usize, Vec<f32>) {
     let bytes = fs::read(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
@@ -29,7 +29,7 @@ fn main() {
     index.add_vec(base, 32);
     eprintln!("build {:.1}s", t0.elapsed().as_secs_f64());
     #[cfg(feature = "counters")]
-    rhnsw::hnsw::counters::take();
+    nmslib_rs::hnsw::counters::take();
 
     // "hot": the first query repeated, so the graph region it touches stays
     // cached; the time per distance is then compute plus bookkeeping only.
@@ -50,7 +50,7 @@ fn main() {
         let us = best / nq as f64 * 1e6;
         #[cfg(feature = "counters")]
         let (d, e) = {
-            let (d, e) = rhnsw::hnsw::counters::take();
+            let (d, e) = nmslib_rs::hnsw::counters::take();
             (d as f64 / (nq * reps) as f64, e as f64 / (nq * reps) as f64)
         };
         #[cfg(not(feature = "counters"))]

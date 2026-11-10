@@ -1,4 +1,4 @@
-"""Print NMSLIB and rhnsw recall@10 curves side by side, with QPS and parity.
+"""Print NMSLIB and nmslib_rs recall@10 curves side by side, with QPS and parity.
 
     python bench/compare.py                 # 100k
     python bench/compare.py --size 1M
@@ -27,12 +27,12 @@ def main() -> None:
     ap.add_argument("--dataset", choices=sorted(common.DATASETS), default="sift")
     ap.add_argument("--size", default="100k", help="result label, e.g. 100k, 1M or 1.18M")
     ap.add_argument("--reference", help="NMSLIB JSON (default results/nmslib_<size>.json)")
-    ap.add_argument("--candidate", help="rhnsw JSON (default results/rhnsw_<size>.json)")
+    ap.add_argument("--candidate", help="nmslib_rs JSON (default results/nmslib_rs_<size>.json)")
     args = ap.parse_args()
 
     prefix = common.DATASETS[args.dataset].label_prefix
     ref = json.loads(open(args.reference or common.RESULTS_DIR / f"nmslib_{prefix}{args.size}.json").read())
-    cand = json.loads(open(args.candidate or common.RESULTS_DIR / f"rhnsw_{prefix}{args.size}.json").read())
+    cand = json.loads(open(args.candidate or common.RESULTS_DIR / f"nmslib_rs_{prefix}{args.size}.json").read())
     rows = common.parity(ref, cand["builds"])
     ref_qps, cand_qps = mean_of(ref, "qps"), mean_of(cand, "qps")
 
@@ -47,10 +47,10 @@ def main() -> None:
     print(f"{cand.get('dataset', 'sift-128-euclidean')} {args.size}, recall@10 "
           f"(mean over builds), queries on 1 thread")
     print(builds_line("nmslib", ref))
-    print(builds_line("rhnsw", cand))
+    print(builds_line("nmslib_rs", cand))
     print()
-    print(f"{'efSearch':>8} | {'nmslib':>8} {'rhnsw':>8} {'diff':>8} {'worst':>8} {'tol':>6} "
-          f"{'parity':>6} | {'qps nmslib':>10} {'qps rhnsw':>10} {'ratio':>6}")
+    print(f"{'efSearch':>8} | {'nmslib':>8} {'nmslib_rs':>8} {'diff':>8} {'worst':>8} {'tol':>6} "
+          f"{'parity':>6} | {'qps nmslib':>10} {'qps nmslib_rs':>10} {'ratio':>6}")
     print("-" * 97)
     for r in rows:
         ef = r["ef_search"]

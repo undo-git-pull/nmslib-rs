@@ -2,7 +2,7 @@
 //! memory-mapped file or an in-memory copy in the same layout. Built indexes
 //! are converted to this layout after each `add` (see `Hnsw::freeze`).
 //!
-//! The format is rhnsw's own (not NMSLIB's), little-endian and versioned.
+//! The format is nmslib-rs's own (not NMSLIB's), little-endian and versioned.
 //! Every section starts on a 64-byte boundary:
 //!
 //! | section      | contents                                                        |
@@ -50,7 +50,7 @@ const LINE_WORDS: usize = 16;
 #[derive(Debug)]
 pub enum LoadError {
     Io(io::Error),
-    /// The file is not a valid rhnsw index (or not one this build can read).
+    /// The file is not a valid nmslib-rs index (or not one this build can read).
     Format(String),
 }
 
@@ -194,10 +194,10 @@ impl Header {
     /// length the node count and sizes imply.
     fn decode(b: &[u8], actual_len: u64) -> Result<Header, LoadError> {
         if b.len() < HEADER_LEN {
-            return Err(bad(format!("file is {} bytes, shorter than an rhnsw header", b.len())));
+            return Err(bad(format!("file is {} bytes, shorter than an nmslib-rs header", b.len())));
         }
         if b[..8] != MAGIC {
-            return Err(bad("not an rhnsw index file (bad magic bytes)"));
+            return Err(bad("not an nmslib-rs index file (bad magic bytes)"));
         }
         let u32_at = |i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
         let u64_at = |i: usize| u64::from_le_bytes(b[i..i + 8].try_into().unwrap());
@@ -431,12 +431,12 @@ fn bytes_of(backing: &Backing) -> &[u8] {
 
 fn open_checked(path: &Path) -> Result<File, LoadError> {
     if cfg!(target_endian = "big") {
-        return Err(bad("rhnsw index files are little-endian; big-endian hosts are not supported"));
+        return Err(bad("nmslib-rs index files are little-endian; big-endian hosts are not supported"));
     }
     let file = File::open(path)?;
     let len = file.metadata()?.len();
     if len < HEADER_LEN as u64 {
-        return Err(bad(format!("file is {len} bytes, shorter than an rhnsw header")));
+        return Err(bad(format!("file is {len} bytes, shorter than an nmslib-rs header")));
     }
     Ok(file)
 }
