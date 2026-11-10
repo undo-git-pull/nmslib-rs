@@ -11,15 +11,19 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 fearless_simd = "1.2"
 pyo3 = "0.30"
+rand = "0.10"
 
 [dev-dependencies]
 criterion = "0.8"
 proptest = "1.12"
-rand = "0.10"
 
 [[bench]]
 name = "simd"
 harness = false
+
+# Graph tests build 10k-node indexes; unoptimized they take minutes.
+[profile.test]
+opt-level = 3
 
 [profile.bench]
 debug = true

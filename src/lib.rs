@@ -1,4 +1,6 @@
+pub mod hnsw;
 pub mod simd;
+pub mod visited;
 
 use pyo3::prelude::*;
 
