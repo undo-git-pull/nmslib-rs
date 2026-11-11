@@ -1198,7 +1198,8 @@ fn add_link<S: Simd>(
     )
 }
 
-fn normalize(v: &mut [f32]) {
+/// Scales `v` to unit length; leaves a zero vector unchanged.
+pub(crate) fn normalize(v: &mut [f32]) {
     let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
         v.iter_mut().for_each(|x| *x /= norm);

@@ -1,3 +1,4 @@
+pub mod brute;
 pub mod frozen;
 pub mod hnsw;
 pub mod simd;
@@ -17,6 +18,7 @@ mod nmslib_rs {
     use pyo3::exceptions::{PyRuntimeError, PyValueError};
     use pyo3::prelude::*;
 
+    use crate::brute::BruteForce;
     use crate::frozen::LoadError;
     use crate::hnsw::{Hnsw, Params, Space};
 
@@ -53,15 +55,7 @@ mod nmslib_rs {
             seed: u64,
             post: bool,
         ) -> PyResult<Self> {
-            let space = match space {
-                "l2" => Space::L2,
-                "cosine" => Space::Cosine,
-                other => {
-                    return Err(PyValueError::new_err(format!(
-                        "space must be \"l2\" or \"cosine\", got {other:?}"
-                    )));
-                }
-            };
+            let space = parse_space(space)?;
             if dim == 0 {
                 return Err(PyValueError::new_err("dim must be positive"));
             }
@@ -188,10 +182,7 @@ mod nmslib_rs {
 
         #[getter]
         fn space(&self) -> &'static str {
-            match self.inner.space() {
-                Space::L2 => "l2",
-                Space::Cosine => "cosine",
-            }
+            space_name(self.inner.space())
         }
 
         /// True for an index loaded with `mmap=True`.
@@ -222,6 +213,110 @@ mod nmslib_rs {
                     ""
                 }
             )
+        }
+    }
+
+    /// Exact k-nearest-neighbor search that compares each query with every
+    /// stored vector, like NMSLIB's `brute_force` method.
+    ///
+    /// It uses the same distance kernels, cosine normalization and tie order
+    /// as `Index`, so its results are the exact answer that `Index.knn_query`
+    /// approximates: use it to measure recall or to check a query. Distances
+    /// and labels follow the same conventions as `Index`. A query costs
+    /// `len * dim` multiply-adds, so it is slow on large sets. The index
+    /// lives in memory and cannot be saved.
+    #[pyclass(module = "nmslib_rs")]
+    struct BruteForceIndex {
+        inner: BruteForce,
+    }
+
+    #[pymethods]
+    impl BruteForceIndex {
+        #[new]
+        #[pyo3(signature = (dim, space = "l2"))]
+        fn new(dim: usize, space: &str) -> PyResult<Self> {
+            let space = parse_space(space)?;
+            if dim == 0 {
+                return Err(PyValueError::new_err("dim must be positive"));
+            }
+            Ok(Self {
+                inner: BruteForce::new(dim, space),
+            })
+        }
+
+        /// Adds vectors, a C-contiguous float32 array of shape (n, dim).
+        fn add_items(&mut self, py: Python<'_>, vectors: &Bound<'_, PyAny>) -> PyResult<()> {
+            let (_, data) = copy_matrix(vectors, self.inner.dim(), "vectors")?;
+            let inner = &mut self.inner;
+            py.detach(|| inner.add(&data));
+            Ok(())
+        }
+
+        /// Returns (labels, distances), each of shape (n_queries, k), nearest
+        /// first, with the same conventions as `Index.knn_query`.
+        /// `num_threads`: 0 uses all cores.
+        #[pyo3(signature = (queries, k = 10, num_threads = 0))]
+        fn knn_query<'py>(
+            &self,
+            py: Python<'py>,
+            queries: &Bound<'py, PyAny>,
+            k: usize,
+            num_threads: usize,
+        ) -> PyResult<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<f32>>)> {
+            if k == 0 {
+                return Err(PyValueError::new_err("k must be positive"));
+            }
+            let (nq, data) = copy_matrix(queries, self.inner.dim(), "queries")?;
+            let inner = &self.inner;
+            let (labels, dists) = py.detach(|| {
+                let mut labels = vec![-1i64; nq * k];
+                let mut dists = vec![f32::INFINITY; nq * k];
+                inner.knn_query_batch(&data, k, num_threads, &mut labels, &mut dists);
+                (labels, dists)
+            });
+            let labels = Array2::from_shape_vec((nq, k), labels).expect("shape matches");
+            let dists = Array2::from_shape_vec((nq, k), dists).expect("shape matches");
+            Ok((labels.into_pyarray(py), dists.into_pyarray(py)))
+        }
+
+        #[getter]
+        fn dim(&self) -> usize {
+            self.inner.dim()
+        }
+
+        #[getter]
+        fn space(&self) -> &'static str {
+            space_name(self.inner.space())
+        }
+
+        fn __len__(&self) -> usize {
+            self.inner.len()
+        }
+
+        fn __repr__(&self) -> String {
+            format!(
+                "nmslib_rs.BruteForceIndex(dim={}, space={:?}, len={})",
+                self.inner.dim(),
+                self.space(),
+                self.inner.len(),
+            )
+        }
+    }
+
+    fn parse_space(space: &str) -> PyResult<Space> {
+        match space {
+            "l2" => Ok(Space::L2),
+            "cosine" => Ok(Space::Cosine),
+            other => Err(PyValueError::new_err(format!(
+                "space must be \"l2\" or \"cosine\", got {other:?}"
+            ))),
+        }
+    }
+
+    fn space_name(space: Space) -> &'static str {
+        match space {
+            Space::L2 => "l2",
+            Space::Cosine => "cosine",
         }
     }
 

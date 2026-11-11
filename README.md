@@ -40,7 +40,7 @@ index.save("sift.idx")
 shared = nmslib_rs.Index.load("sift.idx", mmap=True)
 ```
 
-The module exports the `Index` class and one function, `simd_level()`.
+The module exports two classes, `Index` and `BruteForceIndex`, and one function, `simd_level()`.
 
 ### `Index(dim, space="l2", M=16, ef_construction=200, seed=0, post=True)`
 
@@ -110,6 +110,19 @@ The first queries against a mapped index whose file is not in the page cache run
 
 All attributes are read-only; use `set_ef` to change `ef`.
 
+### `BruteForceIndex(dim, space="l2")`
+
+An exact index that compares each query with every stored vector, the counterpart of NMSLIB's `brute_force` method. It uses the same distance kernels, cosine normalization and tie order as `Index`, so on the same data its results are the exact answer that `Index.knn_query` approximates. That makes it useful for measuring recall on your own data and for checking whether a bad result comes from the graph search or from the data.
+
+```python
+exact = nmslib_rs.BruteForceIndex(dim=128, space="l2")
+exact.add_items(data)
+true_labels, true_distances = exact.knn_query(queries, k=10)
+recall = np.mean([len(set(a) & set(b)) / 10 for a, b in zip(labels, true_labels)])
+```
+
+It has `add_items(vectors)`, `knn_query(queries, k=10, num_threads=0)`, `dim`, `space` and `len()`, with the same input checks and return conventions as `Index`. There is no `ef`, and the index cannot be saved. Each query reads every stored vector, so query time grows linearly with the index size: on an Apple M1 Max with 100,000 SIFT vectors it answers about 930 queries per second on one thread, against about 9,000 for `Index` at `ef=80` with recall@10 of 0.998 (see `bench/brute_force.py` and `bench/results/nmslib_rs_100k_mac.json`).
+
 ### `simd_level()`
 
 Returns the name of the SIMD instruction set the distance kernels selected on this machine, one of `"AVX-512"`, `"AVX2+FMA"`, `"SSE4.2"` or `"SSE2"` on x86 and `"NEON"` on Apple Silicon. Selection happens at run time, so one build runs on any CPU of its architecture.
@@ -138,6 +151,12 @@ python bench/compare.py --size 1M
 ```
 
 Recall depends on insertion order, so the baseline script builds NMSLIB several times from shuffled orders and records how far recall moves between builds. `compare.py` passes an `efSearch` value when every nmslib-rs build is within that spread of NMSLIB's mean recall, or within 0.5 percentage points if the spread is narrower, and exits non-zero otherwise.
+
+`bench/brute_force.py` runs exact search with `BruteForceIndex`, NMSLIB's `brute_force` method and a float64 numpy scan, then reports the queries per second and the recall of each against the float64 ground truth.
+
+```sh
+python bench/brute_force.py --n 100000 --queries 500
+```
 
 `bench/mmap_pss.py` measures the memory of several processes sharing one mapped index. It reads `/proc`, so it runs on Linux only.
 
