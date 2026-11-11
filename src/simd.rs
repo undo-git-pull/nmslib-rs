@@ -84,16 +84,40 @@ fn reduce<S: Simd>(
 /// Hints the CPU to start loading the first cache line of `data`. Graph
 /// search issues this for every neighbor before computing any distance, so
 /// the memory misses overlap instead of happening one by one; one line per
-/// vector measured best (the hardware fetches the following lines). A no-op
-/// where no prefetch instruction is available through safe code.
+/// vector measured best (the hardware fetches the following lines). Uses
+/// `prefetcht0` on x86 and `prfm pldl1keep` on aarch64; a no-op elsewhere.
 #[inline(always)]
 pub fn prefetch_in<S: Simd, T>(simd: S, data: &[T]) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     if let Some(sse2) = simd.level().as_sse2() {
         prefetch_sse2(sse2, data.as_ptr().cast());
     }
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    #[cfg(target_arch = "aarch64")]
+    {
+        let _ = simd;
+        prefetch_aarch64(data.as_ptr().cast());
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
     let _ = (simd, data);
+}
+
+/// `prfm pldl1keep`: the aarch64 prefetch-to-L1 hint. Rust's prefetch
+/// intrinsic for ARM is unstable, so this uses inline assembly. On Apple M1
+/// at SIFT 1M, queries were memory-bound and level with NMSLIB (which
+/// prefetches) until this was added; see NOTES.md.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+fn prefetch_aarch64(ptr: *const u8) {
+    // SAFETY: `prfm` is a hint. It reads no data into registers, writes
+    // nothing, and never faults, even for an invalid address (here the
+    // pointer comes from a live slice anyway). It touches no stack or flags.
+    unsafe {
+        core::arch::asm!(
+            "prfm pldl1keep, [{ptr}]",
+            ptr = in(reg) ptr,
+            options(nostack, readonly, preserves_flags),
+        );
+    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

@@ -144,9 +144,10 @@ feature. `perf` was unavailable (no tools for the running kernel,
   fell 5 to 14% behind at 1M.
 
 NMSLIB's optimized search prefetches neighbor vectors, the visited-array
-slots, and the next node's link list. nmslib-rs now does the same, in safe code
-through a fearless_simd `kernel!` with an `Sse2` token (a no-op on ARM,
-where the prefetch intrinsic is not stable):
+slots, and the next node's link list. nmslib-rs now does the same: on x86 in
+safe code through a fearless_simd `kernel!` with an `Sse2` token, and on
+aarch64 with one inline-`asm!` `prfm pldl1keep` (Rust's ARM prefetch
+intrinsic is not stable; see "ARM prefetch" below):
 
 1. Prefetch the first line of every unvisited neighbor's vector before
    computing any distance (one line beat 2, 4 and 8).
@@ -159,6 +160,25 @@ on 1M, and 1.10 to 1.22x on 100k. Not done: NMSLIB also stores each node's
 level-0 links next to its vector. That would save one miss per expansion
 (about 5% at efSearch 80), but needs a second, frozen layout for queries to
 stay in safe Rust, since the build's lists are atomics.
+
+### ARM prefetch (phase 7, Apple M1 Max)
+
+Until this change, `prefetch_in` did nothing on aarch64. On SIFT 1M the Mac
+showed the gap that prefetch had closed on Linux: nmslib-rs was 0.88 to 1.00x
+NMSLIB at 1M, against 1.2 to 1.3x at 100k, where the index fits in cache.
+The NMSLIB it was compared with was built from the sdist on the Mac; its L2
+kernel is NEON (`fsub.4s`/`fmla.4s`) and it prefetches (`prfm`).
+
+Adding `prfm pldl1keep` through inline assembly (the one `unsafe` outside
+file mapping; the instruction is a hint and cannot fault) raised
+single-thread QPS on SIFT 1M by 1.06x at efSearch 10 and 1.12 to 1.15x from
+efSearch 20 to 640, to 0.93x NMSLIB at efSearch 10 and 1.08 to 1.18x above
+that. Recall is unchanged. Medians of 3 builds, 10 build threads, on battery
+power; one of the prefetch builds lost half its QPS at efSearch 80 and 160
+to outside load and is excluded by the median. Results:
+`bench/results/nmslib_rs_1M_mac.json` (before),
+`bench/results/nmslib_rs_1M_mac_prefetch.json` (after),
+`bench/results/nmslib_1M_mac.json` (NMSLIB).
 
 ## Saved indexes (phase 6)
 
