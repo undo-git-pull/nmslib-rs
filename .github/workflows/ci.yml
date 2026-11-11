@@ -12,12 +12,14 @@ permissions:
 
 jobs:
   test:
-    name: test (${{ matrix.os }})
+    # The README badges look these job names up; keep them in sync.
+    name: Python ${{ matrix.python }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        python: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
 
@@ -30,7 +32,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
       # .cargo/config.toml points PyO3 at .venv/bin/python, so the venv
       # has to live at that path for cargo test to link.

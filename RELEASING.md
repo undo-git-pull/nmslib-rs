@@ -2,7 +2,7 @@
 
 nmslib-rs is published to PyPI as `nmslib-rs` (imported as `nmslib_rs`). Two GitHub Actions workflows handle it.
 
-`.github/workflows/ci.yml` runs on every push and pull request. On Ubuntu and macOS it checks formatting with `cargo fmt --check`, runs `cargo test`, builds the extension with `maturin develop --release`, and runs `pytest tests`.
+`.github/workflows/ci.yml` runs on every push and pull request. On Ubuntu and macOS, once each for Python 3.12, 3.13 and 3.14, it checks formatting with `cargo fmt --check`, runs `cargo test`, builds the extension with `maturin develop --release`, and runs `pytest tests`.
 
 `.github/workflows/release.yml` runs when a tag matching `v*` is pushed. It builds wheels for CPython 3.12, 3.13 and 3.14 on these platforms:
 

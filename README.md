@@ -1,5 +1,17 @@
 # nmslib-rs
 
+[![PyPI](https://img.shields.io/pypi/v/nmslib-rs)](https://pypi.org/project/nmslib-rs/)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/nmslib-rs/)
+[![ci](https://img.shields.io/github/actions/workflow/status/undo-git-pull/nmslib-rs/ci.yml?branch=main&label=ci)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/actions/workflow/status/undo-git-pull/nmslib-rs/release.yml?label=release)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/undo-git-pull/nmslib-rs/blob/main/LICENSE)
+
+| Python | Linux | macOS |
+|---|---|---|
+| 3.12 | [![Python 3.12 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.12%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.12 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.12%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
+| 3.13 | [![Python 3.13 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.13%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.13 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.13%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
+| 3.14 | [![Python 3.14 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.14%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.14 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.14%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
+
 A Rust implementation of HNSW, the graph index behind NMSLIB's `hnsw` method, with Python bindings built by maturin. It searches dense `float32` vectors under L2 or cosine distance, builds in parallel, and saves indexes to a file that several processes can memory-map and share.
 
 The build follows NMSLIB's choices for level generation, neighbor selection, overflow pruning and the `post=2` second pass (recorded in [NOTES.md](NOTES.md)), so recall at a given `ef` matches NMSLIB's. The API and file format are its own; nmslib-rs does not read NMSLIB indexes and is not a drop-in replacement for the `nmslib` module.
