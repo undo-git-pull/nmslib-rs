@@ -139,6 +139,11 @@ def test_releases_gil_during_build():
 
     t = threading.Thread(target=count)
     t.start()
+    # Measure the ticker's rate on this machine first: sleep(0.001) can take
+    # several milliseconds on a loaded CI runner.
+    time.sleep(0.2)
+    baseline_rate = ticks / 0.2
+    ticks = 0
     start = time.perf_counter()
     index.add_items(data, num_threads=1)  # sequential, so the build takes a while
     elapsed = time.perf_counter() - start
@@ -146,7 +151,7 @@ def test_releases_gil_during_build():
     t.join()
     # With the GIL held the counter could not advance at all during the build.
     assert elapsed > 0.2
-    assert ticks > 0.2 * elapsed / 0.001
+    assert ticks > 0.2 * baseline_rate * elapsed
 
 
 def test_parallel_query_matches_single_thread(built):
