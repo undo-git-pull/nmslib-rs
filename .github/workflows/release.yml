@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # --find-interpreter builds one wheel per Python it finds. The manylinux
-      # container ships its own interpreters; macOS and Windows use these.
+      # Wheels are built for exactly these versions (-i below). The manylinux
+      # container has its own interpreters; macOS and Windows use these.
       - uses: actions/setup-python@v6
         with:
           python-version: |
@@ -54,19 +54,29 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           manylinux: ${{ matrix.platform.manylinux }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.12 python3.13 python3.14
 
       - uses: astral-sh/setup-uv@v7
 
-      - name: Test wheel
+      - name: Test wheels
         shell: bash
         run: |
           set -e
-          uv venv --python 3.12 .venv-test
-          if [ -d .venv-test/Scripts ]; then source .venv-test/Scripts/activate; else source .venv-test/bin/activate; fi
-          uv pip install nmslib-rs --no-index --no-deps --find-links dist
-          uv pip install numpy pytest
-          pytest tests
+          for py in 3.12 3.13 3.14; do
+            echo "::group::Python $py"
+            rm -rf .venv-test
+            uv venv --python "$py" .venv-test
+            if [ -d .venv-test/Scripts ]; then source .venv-test/Scripts/activate; else source .venv-test/bin/activate; fi
+            uv pip install nmslib-rs --no-index --no-deps --find-links dist
+            uv pip install numpy pytest
+            python -c "import sys, nmslib_rs; print(sys.version, nmslib_rs.simd_level())"
+            pytest tests
+            deactivate
+            echo "::endgroup::"
+          done
+          # Fail if the build produced wheels for any other Python.
+          extra=$(ls dist | grep -v -E -- '-cp31[234]-cp31[234]-' || true)
+          if [ -n "$extra" ]; then echo "Unexpected wheels: $extra" >&2; exit 1; fi
 
       - uses: actions/upload-artifact@v6
         with:

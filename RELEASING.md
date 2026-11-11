@@ -14,7 +14,7 @@ nmslib-rs is published to PyPI as `nmslib-rs` (imported as `nmslib_rs`). Two Git
 | macOS arm64 | `macos-latest` |
 | Windows x64 | `windows-latest` |
 
-Each wheel is installed into a fresh environment and the Python tests are run against it before anything is uploaded. The workflow also builds an sdist, checks that the tag equals `v` plus the `version` in `Cargo.toml`, publishes everything to PyPI, and creates a GitHub release with the same files attached. Publishing uses PyPI trusted publishing, so no API token is stored in the repository.
+Each wheel is installed into a fresh environment for its Python version and the Python tests are run against it before anything is uploaded. The build fails if it produces a wheel for any other Python version. The workflow also builds an sdist, checks that the tag equals `v` plus the `version` in `Cargo.toml`, publishes everything to PyPI, and creates a GitHub release with the same files attached. Publishing uses PyPI trusted publishing, so no API token is stored in the repository.
 
 The x86_64 wheels detect AVX2 and AVX-512 at runtime, so one wheel serves all x86_64 CPUs.
 
