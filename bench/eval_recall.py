@@ -16,6 +16,7 @@ import os
 import multiprocessing as mp
 import sys
 import time
+from importlib.metadata import version
 
 import numpy as np
 
@@ -120,7 +121,7 @@ def main() -> None:
     parity = common.parity(reference, builds)
     result = {
         "library": "nmslib_rs",
-        "library_version": "0.1.0",
+        "library_version": version("nmslib-rs"),
         "simd_level": nmslib_rs.simd_level(),
         "dataset": ds.name,
         "space": ds.metric,
