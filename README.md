@@ -1,6 +1,6 @@
 # nmslib-rs
 
-[![PyPI](https://img.shields.io/pypi/v/nmslib-rs)](https://pypi.org/project/nmslib-rs/)
+[![PyPI](https://img.shields.io/pypi/v/nmslib-rs?label=pypi)](https://pypi.org/project/nmslib-rs/)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/nmslib-rs/)
 [![ci](https://img.shields.io/github/actions/workflow/status/undo-git-pull/nmslib-rs/ci.yml?branch=main&label=ci)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/actions/workflow/status/undo-git-pull/nmslib-rs/release.yml?label=release)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/release.yml)
