@@ -15,10 +15,10 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use nmslib_rs::hnsw::{Hnsw, Params, Space};
+use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use nmslib_rs::hnsw::{Hnsw, Params, Space};
 
 const K: usize = 10;
 const EF_SEARCH: [usize; 7] = [10, 20, 40, 80, 160, 320, 640];
@@ -27,9 +27,16 @@ fn read_matrix(path: &Path) -> (usize, usize, Vec<f32>) {
     let bytes = fs::read(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
     let rows = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
     let dim = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
-    let data: Vec<f32> =
-        bytes[8..].chunks_exact(4).map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect();
-    assert_eq!(data.len(), rows * dim, "{}: size does not match header", path.display());
+    let data: Vec<f32> = bytes[8..]
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    assert_eq!(
+        data.len(),
+        rows * dim,
+        "{}: size does not match header",
+        path.display()
+    );
     (rows, dim, data)
 }
 
@@ -39,7 +46,9 @@ fn main() {
         args.len() == 5 || args.len() == 6,
         "usage: eval_sift <base.f32> <queries.f32> <out_dir> <order_seed> [threads]"
     );
-    let threads: usize = args.get(5).map_or(1, |t| t.parse().expect("threads must be an integer"));
+    let threads: usize = args
+        .get(5)
+        .map_or(1, |t| t.parse().expect("threads must be an integer"));
     let (n, dim, base) = read_matrix(Path::new(&args[1]));
     let (nq, qdim, queries) = read_matrix(Path::new(&args[2]));
     assert_eq!(dim, qdim);
@@ -57,13 +66,19 @@ fn main() {
     }
     drop(base);
 
-    let params = Params { seed, ..Params::default() };
+    let params = Params {
+        seed,
+        ..Params::default()
+    };
     let mut index = Hnsw::new(dim, Space::L2, params.clone());
     let t0 = Instant::now();
     index.add_vec(shuffled, threads);
     let build_s = t0.elapsed().as_secs_f64();
     let stats = index.stats();
-    eprintln!("[seed {seed}] build {build_s:.1}s, levels {:?}", stats.nodes_per_level);
+    eprintln!(
+        "[seed {seed}] build {build_s:.1}s, levels {:?}",
+        stats.nodes_per_level
+    );
 
     let mut sweep = Vec::new();
     for ef in EF_SEARCH {
@@ -93,7 +108,12 @@ fn main() {
         params.post,
         nmslib_rs::simd::selected_level_name(),
         stats.nodes_per_level,
-        stats.mean_degree.iter().map(|d| format!("{d:.3}")).collect::<Vec<_>>().join(", "),
+        stats
+            .mean_degree
+            .iter()
+            .map(|d| format!("{d:.3}"))
+            .collect::<Vec<_>>()
+            .join(", "),
         sweep.join(", "),
     );
     fs::File::create(out_dir.join(format!("summary_seed{seed}.json")))

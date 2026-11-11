@@ -2,11 +2,11 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use fearless_simd::{Level, dispatch};
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use nmslib_rs::simd::{
     dot, dot_in, dot_scalar, l2_sq, l2_sq_in, l2_sq_scalar, selected_level_name,
 };
+use rand::rngs::StdRng;
+use rand::{RngExt, SeedableRng};
 
 fn random_vec(rng: &mut StdRng, dim: usize) -> Vec<f32> {
     (0..dim).map(|_| rng.random_range(-1.0f32..1.0)).collect()
@@ -23,11 +23,15 @@ fn kernels(c: &mut Criterion) {
         group.bench_function("l2_sq_scalar", |bn| {
             bn.iter(|| l2_sq_scalar(black_box(&a), black_box(&b)))
         });
-        group.bench_function("l2_sq_simd", |bn| bn.iter(|| l2_sq(black_box(&a), black_box(&b))));
+        group.bench_function("l2_sq_simd", |bn| {
+            bn.iter(|| l2_sq(black_box(&a), black_box(&b)))
+        });
         group.bench_function("dot_scalar", |bn| {
             bn.iter(|| dot_scalar(black_box(&a), black_box(&b)))
         });
-        group.bench_function("dot_simd", |bn| bn.iter(|| dot(black_box(&a), black_box(&b))));
+        group.bench_function("dot_simd", |bn| {
+            bn.iter(|| dot(black_box(&a), black_box(&b)))
+        });
         group.finish();
     }
 }

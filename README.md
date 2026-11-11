@@ -4,6 +4,9 @@ A Rust implementation of HNSW, the graph index behind NMSLIB's `hnsw` method, wi
 
 The build follows NMSLIB's choices for level generation, neighbor selection, overflow pruning and the `post=2` second pass (recorded in [NOTES.md](NOTES.md)), so recall at a given `ef` matches NMSLIB's. The API and file format are its own; nmslib-rs does not read NMSLIB indexes and is not a drop-in replacement for the `nmslib` module.
 
+> [!WARNING]
+> nmslib-rs has not been tested in production workloads. It implements one part of NMSLIB, the `hnsw` method with dense `float32` vectors under L2 and cosine distance. NMSLIB's other search methods, its other distance spaces, and its sparse and string data types are not included.
+
 ## Installing
 
 nmslib-rs needs Rust 1.89 or later and Python 3.12 or later. Build and install it into a virtual environment with maturin:

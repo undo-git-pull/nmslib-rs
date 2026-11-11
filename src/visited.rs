@@ -15,7 +15,10 @@ pub struct VisitedSet {
 
 impl VisitedSet {
     pub fn new(capacity: usize) -> Self {
-        Self { marks: vec![0; capacity], generation: 0 }
+        Self {
+            marks: vec![0; capacity],
+            generation: 0,
+        }
     }
 
     /// Grows to hold `capacity` nodes. New slots start unvisited.

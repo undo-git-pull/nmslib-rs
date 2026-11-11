@@ -77,7 +77,9 @@ fn bad(msg: impl Into<String>) -> LoadError {
 
 /// FNV-1a over `bytes`.
 pub(crate) fn header_checksum(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| {
+        (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 fn pad_words(words: usize) -> usize {
@@ -133,10 +135,22 @@ impl Header {
         let max_m0 = 2 * meta.m;
         let list_words = pad_words(1 + max_m0);
         let stride = list_words + pad_words(meta.dim);
-        let levels = Section { offset: HEADER_LEN as u64, len: n as u64 };
-        let upper_offset = Section { offset: align_up(levels.offset + levels.len), len: 8 * n as u64 };
-        let upper = Section { offset: align_up(upper_offset.offset + upper_offset.len), len: 4 * upper_words };
-        let level0 = Section { offset: align_up(upper.offset + upper.len), len: 4 * (n * stride) as u64 };
+        let levels = Section {
+            offset: HEADER_LEN as u64,
+            len: n as u64,
+        };
+        let upper_offset = Section {
+            offset: align_up(levels.offset + levels.len),
+            len: 8 * n as u64,
+        };
+        let upper = Section {
+            offset: align_up(upper_offset.offset + upper_offset.len),
+            len: 4 * upper_words,
+        };
+        let level0 = Section {
+            offset: align_up(upper.offset + upper.len),
+            len: 4 * (n * stride) as u64,
+        };
         Header {
             dim: meta.dim,
             space: meta.space,
@@ -168,7 +182,11 @@ impl Header {
         put(&VERSION.to_le_bytes());
         put(&u32::from(self.post).to_le_bytes());
         put(&(self.dim as u32).to_le_bytes());
-        put(&(match self.space { Space::L2 => 0u32, Space::Cosine => 1 }).to_le_bytes());
+        put(&(match self.space {
+            Space::L2 => 0u32,
+            Space::Cosine => 1,
+        })
+        .to_le_bytes());
         put(&(self.m as u32).to_le_bytes());
         put(&(self.max_m0 as u32).to_le_bytes());
         put(&(self.ef_construction as u32).to_le_bytes());
@@ -194,7 +212,10 @@ impl Header {
     /// length the node count and sizes imply.
     fn decode(b: &[u8], actual_len: u64) -> Result<Header, LoadError> {
         if b.len() < HEADER_LEN {
-            return Err(bad(format!("file is {} bytes, shorter than an nmslib-rs header", b.len())));
+            return Err(bad(format!(
+                "file is {} bytes, shorter than an nmslib-rs header",
+                b.len()
+            )));
         }
         if b[..8] != MAGIC {
             return Err(bad("not an nmslib-rs index file (bad magic bytes)"));
@@ -203,7 +224,9 @@ impl Header {
         let u64_at = |i: usize| u64::from_le_bytes(b[i..i + 8].try_into().unwrap());
         let version = u32_at(8);
         if version != VERSION {
-            return Err(bad(format!("index file format version {version}; this build reads version {VERSION}")));
+            return Err(bad(format!(
+                "index file format version {version}; this build reads version {VERSION}"
+            )));
         }
         if u64_at(CHECKSUM_AT) != header_checksum(&b[..CHECKSUM_AT]) {
             return Err(bad("header checksum mismatch: the file header is corrupt"));
@@ -231,8 +254,12 @@ impl Header {
         let list_words = u32_at(52) as usize;
         let stride = u32_at(56) as usize;
         let seed = u64_at(64);
-        let section = |i: usize| Section { offset: u64_at(72 + 16 * i), len: u64_at(80 + 16 * i) };
-        let (levels, upper_offset, upper, level0) = (section(0), section(1), section(2), section(3));
+        let section = |i: usize| Section {
+            offset: u64_at(72 + 16 * i),
+            len: u64_at(80 + 16 * i),
+        };
+        let (levels, upper_offset, upper, level0) =
+            (section(0), section(1), section(2), section(3));
         let file_len = u64_at(136);
 
         if dim == 0 || dim > 1 << 20 {
@@ -253,11 +280,16 @@ impl Header {
         let entry = match (n, entry_node) {
             (0, NO_ENTRY) => Entry::default(),
             (0, _) => return Err(bad("empty index with an entry point")),
-            (_, e) if (e as usize) < n => Entry { node: Some(e), max_level },
+            (_, e) if (e as usize) < n => Entry {
+                node: Some(e),
+                max_level,
+            },
             _ => return Err(bad(format!("entry point {entry_node} out of range"))),
         };
         if file_len != actual_len {
-            return Err(bad(format!("file is {actual_len} bytes but the header says {file_len}")));
+            return Err(bad(format!(
+                "file is {actual_len} bytes but the header says {file_len}"
+            )));
         }
         let level0_len = (n as u64)
             .checked_mul(stride as u64)
@@ -269,9 +301,15 @@ impl Header {
             ("upper", upper, None),
             ("level0", level0, Some(level0_len)),
         ] {
-            let end = s.offset.checked_add(s.len).ok_or_else(|| bad(format!("{name} section overflows")))?;
+            let end = s
+                .offset
+                .checked_add(s.len)
+                .ok_or_else(|| bad(format!("{name} section overflows")))?;
             if s.offset < HEADER_LEN as u64 || s.offset % ALIGN != 0 || end > actual_len {
-                return Err(bad(format!("{name} section [{}, {end}) is misplaced in a {actual_len}-byte file", s.offset)));
+                return Err(bad(format!(
+                    "{name} section [{}, {end}) is misplaced in a {actual_len}-byte file",
+                    s.offset
+                )));
             }
             if expected.is_some_and(|e| e != s.len) || s.len % 4 != 0 && name == "upper" {
                 return Err(bad(format!("{name} section has length {}", s.len)));
@@ -309,7 +347,11 @@ enum Backing {
     Mapped(Mmap),
     /// An owned copy. `words[start..]` begins on a 64-byte boundary, so
     /// level-0 blocks sit on cache lines exactly as they do in a mapped file.
-    Owned { words: Vec<u64>, start: usize, len: usize },
+    Owned {
+        words: Vec<u64>,
+        start: usize,
+        len: usize,
+    },
 }
 
 /// An index in the interleaved file layout, read-only: either a mapped file
@@ -329,7 +371,9 @@ fn aligned_zeroed(len: usize) -> Backing {
 
 fn owned_bytes_mut(backing: &mut Backing) -> &mut [u8] {
     match backing {
-        Backing::Owned { words, start, len } => &mut bytemuck::cast_slice_mut(&mut words[*start..])[..*len],
+        Backing::Owned { words, start, len } => {
+            &mut bytemuck::cast_slice_mut(&mut words[*start..])[..*len]
+        }
         Backing::Mapped(_) => unreachable!("mapped memory is read-only"),
     }
 }
@@ -390,11 +434,16 @@ impl Frozen {
         let per_level = 1 + h.m as u64;
         for (id, (&level, &offset)) in v.levels.iter().zip(v.upper_offset).enumerate() {
             if level as usize > h.entry.max_level {
-                return Err(bad(format!("node {id} has level {level}, above the max level {}", h.entry.max_level)));
+                return Err(bad(format!(
+                    "node {id} has level {level}, above the max level {}",
+                    h.entry.max_level
+                )));
             }
             let end = offset.checked_add(level as u64 * per_level);
             if level > 0 && !end.is_some_and(|e| e <= upper_words) {
-                return Err(bad(format!("node {id}: upper-level lists run past the upper section")));
+                return Err(bad(format!(
+                    "node {id}: upper-level lists run past the upper section"
+                )));
             }
         }
         if let Some(e) = h.entry.node
@@ -431,12 +480,16 @@ fn bytes_of(backing: &Backing) -> &[u8] {
 
 fn open_checked(path: &Path) -> Result<File, LoadError> {
     if cfg!(target_endian = "big") {
-        return Err(bad("nmslib-rs index files are little-endian; big-endian hosts are not supported"));
+        return Err(bad(
+            "nmslib-rs index files are little-endian; big-endian hosts are not supported",
+        ));
     }
     let file = File::open(path)?;
     let len = file.metadata()?.len();
     if len < HEADER_LEN as u64 {
-        return Err(bad(format!("file is {len} bytes, shorter than an nmslib-rs header")));
+        return Err(bad(format!(
+            "file is {len} bytes, shorter than an nmslib-rs header"
+        )));
     }
     Ok(file)
 }
@@ -512,7 +565,9 @@ impl View for FrozenView<'_> {
 
 fn layout_for<V: View>(view: &V, meta: &Meta) -> Header {
     let per_level = 1 + meta.m;
-    let upper_words: u64 = (0..view.len() as u32).map(|id| (view.level(id) * per_level) as u64).sum();
+    let upper_words: u64 = (0..view.len() as u32)
+        .map(|id| (view.level(id) * per_level) as u64)
+        .sum();
     Header::layout(meta, view.len(), view.entry(), upper_words)
 }
 
@@ -521,7 +576,9 @@ fn layout_for<V: View>(view: &V, meta: &Meta) -> Header {
 /// file mapped keeps a valid mapping.
 pub(crate) fn save<V: View>(view: &V, meta: &Meta, path: &Path) -> io::Result<()> {
     if cfg!(target_endian = "big") {
-        return Err(io::Error::other("saving is only supported on little-endian hosts"));
+        return Err(io::Error::other(
+            "saving is only supported on little-endian hosts",
+        ));
     }
     let header = layout_for(view, meta);
     let tmp = temp_path(path);
@@ -610,7 +667,10 @@ impl<W: Write> Out<W> {
 }
 
 fn temp_path(path: &Path) -> PathBuf {
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     path.with_file_name(format!(".{name}.{}.tmp", std::process::id()))
 }
 

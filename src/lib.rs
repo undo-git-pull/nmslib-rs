@@ -66,13 +66,23 @@ mod nmslib_rs {
                 return Err(PyValueError::new_err("dim must be positive"));
             }
             if M < 2 {
-                return Err(PyValueError::new_err(format!("M must be at least 2, got {M}")));
+                return Err(PyValueError::new_err(format!(
+                    "M must be at least 2, got {M}"
+                )));
             }
             if ef_construction == 0 {
                 return Err(PyValueError::new_err("ef_construction must be positive"));
             }
-            let params = Params { m: M, ef_construction, post, seed };
-            Ok(Self { inner: Hnsw::new(dim, space, params), ef: 10 })
+            let params = Params {
+                m: M,
+                ef_construction,
+                post,
+                seed,
+            };
+            Ok(Self {
+                inner: Hnsw::new(dim, space, params),
+                ef: 10,
+            })
         }
 
         /// Saves the index to `path`. Writes a temporary file in the same
@@ -100,7 +110,9 @@ mod nmslib_rs {
         fn load(py: Python<'_>, path: PathBuf, mmap: bool) -> PyResult<Self> {
             let inner = py.detach(|| Hnsw::load(&path, mmap)).map_err(|e| match e {
                 LoadError::Io(e) => PyErr::from(e),
-                LoadError::Format(msg) => PyValueError::new_err(format!("{}: {msg}", path.display())),
+                LoadError::Format(msg) => {
+                    PyValueError::new_err(format!("{}: {msg}", path.display()))
+                }
             })?;
             Ok(Self { inner, ef: 10 })
         }
@@ -204,7 +216,11 @@ mod nmslib_rs {
                 self.space(),
                 self.inner.len(),
                 self.ef,
-                if self.inner.is_read_only() { ", read_only=True" } else { "" }
+                if self.inner.is_read_only() {
+                    ", read_only=True"
+                } else {
+                    ""
+                }
             )
         }
     }
@@ -215,7 +231,11 @@ mod nmslib_rs {
     fn copy_matrix(obj: &Bound<'_, PyAny>, dim: usize, what: &str) -> PyResult<(usize, Vec<f32>)> {
         let fix = "convert with np.ascontiguousarray(x, dtype=np.float32)";
         let arr = obj.cast::<PyUntypedArray>().map_err(|_| {
-            let ty = obj.get_type().name().map(|n| n.to_string()).unwrap_or_default();
+            let ty = obj
+                .get_type()
+                .name()
+                .map(|n| n.to_string())
+                .unwrap_or_default();
             PyValueError::new_err(format!("{what} must be a numpy.ndarray, got {ty}"))
         })?;
         if arr.ndim() != 2 || arr.shape()[1] != dim {
@@ -231,11 +251,17 @@ mod nmslib_rs {
             )));
         }
         if !arr.is_c_contiguous() {
-            return Err(PyValueError::new_err(format!("{what} must be C-contiguous; {fix}")));
+            return Err(PyValueError::new_err(format!(
+                "{what} must be C-contiguous; {fix}"
+            )));
         }
         let typed = arr.cast::<PyArray2<f32>>()?;
-        let view = typed.try_readonly().map_err(|e| PyValueError::new_err(format!("{what}: {e}")))?;
-        let slice = view.as_slice().map_err(|e| PyValueError::new_err(format!("{what}: {e}")))?;
+        let view = typed
+            .try_readonly()
+            .map_err(|e| PyValueError::new_err(format!("{what}: {e}")))?;
+        let slice = view
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(format!("{what}: {e}")))?;
         Ok((arr.shape()[0], slice.to_vec()))
     }
 }

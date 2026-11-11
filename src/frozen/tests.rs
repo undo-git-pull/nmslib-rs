@@ -12,17 +12,27 @@ fn temp_file(name: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!("nmslib_rs-test-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
-    dir.join(format!("{name}-{}.nmslib_rs", NEXT.fetch_add(1, Ordering::Relaxed)))
+    dir.join(format!(
+        "{name}-{}.nmslib_rs",
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 fn random_data(n: usize, dim: usize, seed: u64) -> Vec<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
-    (0..n * dim).map(|_| rng.random_range(-1.0f32..1.0)).collect()
+    (0..n * dim)
+        .map(|_| rng.random_range(-1.0f32..1.0))
+        .collect()
 }
 
 /// M = 4 gives several upper levels at a few thousand nodes.
 fn build(space: Space, post: bool) -> Hnsw {
-    let params = Params { m: 4, ef_construction: 50, post, seed: 3 };
+    let params = Params {
+        m: 4,
+        ef_construction: 50,
+        post,
+        seed: 3,
+    };
     let mut index = Hnsw::new(24, space, params);
     index.add(&random_data(3_000, 24, 11), 1);
     index
@@ -48,7 +58,10 @@ fn round_trip_matches_in_memory_index() {
     for space in [Space::L2, Space::Cosine] {
         for post in [false, true] {
             let index = build(space, post);
-            assert!(index.stats().nodes_per_level.len() >= 3, "want several upper levels");
+            assert!(
+                index.stats().nodes_per_level.len() >= 3,
+                "want several upper levels"
+            );
             let path = temp_file("round-trip");
             index.save(&path).unwrap();
             for mmap in [true, false] {
@@ -76,7 +89,15 @@ fn resaving_a_mapped_index_gives_the_same_file() {
 fn loaded_copy_can_grow_and_mapped_index_cannot() {
     // M = 16: with M = 4 a few added vectors are not found from the entry
     // point, loaded or not (8 of 500 in both cases when this was written).
-    let mut index = Hnsw::new(24, Space::L2, Params { ef_construction: 50, seed: 3, ..Params::default() });
+    let mut index = Hnsw::new(
+        24,
+        Space::L2,
+        Params {
+            ef_construction: 50,
+            seed: 3,
+            ..Params::default()
+        },
+    );
     index.add(&random_data(3_000, 24, 11), 1);
     let path = temp_file("grow");
     index.save(&path).unwrap();
@@ -103,7 +124,10 @@ fn same_file_mapped_twice() {
     let index = build(Space::Cosine, false);
     let path = temp_file("twice");
     index.save(&path).unwrap();
-    let (a, b) = (Hnsw::load(&path, true).unwrap(), Hnsw::load(&path, true).unwrap());
+    let (a, b) = (
+        Hnsw::load(&path, true).unwrap(),
+        Hnsw::load(&path, true).unwrap(),
+    );
     assert_same_results(&a, &b);
 }
 
@@ -114,7 +138,15 @@ fn replacing_a_mapped_file_keeps_the_old_mapping_valid() {
     first.save(&path).unwrap();
     let mapped = Hnsw::load(&path, true).unwrap();
 
-    let mut second = Hnsw::new(24, Space::L2, Params { m: 4, seed: 8, ..Params::default() });
+    let mut second = Hnsw::new(
+        24,
+        Space::L2,
+        Params {
+            m: 4,
+            seed: 8,
+            ..Params::default()
+        },
+    );
     second.add(&random_data(1_000, 24, 13), 1);
     second.save(&path).unwrap();
 
@@ -156,7 +188,9 @@ fn load_bytes(bytes: &[u8]) -> Result<Hnsw, LoadError> {
 
 fn expect_format_error(bytes: &[u8], contains: &str) {
     match load_bytes(bytes) {
-        Err(LoadError::Format(msg)) => assert!(msg.contains(contains), "{msg:?} lacks {contains:?}"),
+        Err(LoadError::Format(msg)) => {
+            assert!(msg.contains(contains), "{msg:?} lacks {contains:?}")
+        }
         Err(other) => panic!("expected a format error containing {contains:?}, got {other:?}"),
         Ok(_) => panic!("expected a format error containing {contains:?}, but it loaded"),
     }
@@ -211,10 +245,17 @@ fn rejects_truncated_files() {
     let h = Header::decode(&good[..HEADER_LEN], good.len() as u64).unwrap();
     let mut cuts = vec![0, 1, 8, HEADER_LEN - 1, HEADER_LEN, good.len() - 1];
     for s in [h.levels, h.upper_offset, h.upper, h.level0] {
-        cuts.extend([s.offset as usize, s.offset as usize + 1, (s.offset + s.len) as usize - 1]);
+        cuts.extend([
+            s.offset as usize,
+            s.offset as usize + 1,
+            (s.offset + s.len) as usize - 1,
+        ]);
     }
     for cut in cuts {
-        assert!(load_bytes(&good[..cut]).is_err(), "loaded a file cut at {cut}");
+        assert!(
+            load_bytes(&good[..cut]).is_err(),
+            "loaded a file cut at {cut}"
+        );
     }
 }
 
@@ -230,7 +271,11 @@ fn rejects_inconsistent_levels_and_offsets() {
 
     let mut b = good.clone();
     let id = (0..h.n).find(|&i| good[levels + i] > 0).unwrap();
-    put_u64(&mut b, h.upper_offset.offset as usize + 8 * id, h.upper.len / 4);
+    put_u64(
+        &mut b,
+        h.upper_offset.offset as usize + 8 * id,
+        h.upper.len / 4,
+    );
     expect_format_error(&b, "upper-level lists");
 
     let mut b = good.clone();
@@ -270,4 +315,3 @@ fn missing_file_is_an_io_error() {
     let path = temp_file("missing");
     assert!(matches!(Hnsw::load(&path, true), Err(LoadError::Io(_))));
 }
-

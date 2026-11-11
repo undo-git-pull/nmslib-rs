@@ -8,18 +8,27 @@ use super::*;
 
 fn random_data(n: usize, dim: usize, seed: u64) -> Vec<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
-    (0..n * dim).map(|_| rng.random_range(-1.0f32..1.0)).collect()
+    (0..n * dim)
+        .map(|_| rng.random_range(-1.0f32..1.0))
+        .collect()
 }
 
 fn store_1d(points: &[f32]) -> Store {
-    Store { dim: 1, space: Space::L2, data: points.to_vec() }
+    Store {
+        dim: 1,
+        space: Space::L2,
+        data: points.to_vec(),
+    }
 }
 
 fn brute_force(data: &[f32], dim: usize, q: &[f32], k: usize) -> Vec<u32> {
     let mut d: Vec<Cand> = data
         .chunks_exact(dim)
         .enumerate()
-        .map(|(i, v)| Cand { dist: crate::simd::l2_sq_scalar(q, v), id: i as u32 })
+        .map(|(i, v)| Cand {
+            dist: crate::simd::l2_sq_scalar(q, v),
+            id: i as u32,
+        })
         .collect();
     d.sort_unstable();
     d.into_iter().take(k).map(|c| c.id).collect()
@@ -64,8 +73,13 @@ fn heuristic_keeps_diverse_neighbors() {
     // so it is pruned; -1.5 lies on the other side and is kept.
     let store = store_1d(&[0.0, 1.0, 2.0, -1.5]);
     let cands = |ids: &[u32]| -> Vec<Cand> {
-        let mut c: Vec<Cand> =
-            ids.iter().map(|&id| Cand { dist: store.vector(id)[0].powi(2), id }).collect();
+        let mut c: Vec<Cand> = ids
+            .iter()
+            .map(|&id| Cand {
+                dist: store.vector(id)[0].powi(2),
+                id,
+            })
+            .collect();
         c.sort_unstable();
         c
     };
@@ -121,13 +135,24 @@ fn check_invariants_allowing(index: &Hnsw, max_unreachable: f64) {
         assert!(g.level(id) <= g.max_level());
         for level in 0..=g.level(id) {
             let nbs = g.neighbor_vec(id, level);
-            assert!(nbs.len() <= g.cap(level), "node {id} level {level} degree {}", nbs.len());
+            assert!(
+                nbs.len() <= g.cap(level),
+                "node {id} level {level} degree {}",
+                nbs.len()
+            );
             let unique: HashSet<_> = nbs.iter().collect();
-            assert_eq!(unique.len(), nbs.len(), "duplicate edge at node {id} level {level}");
+            assert_eq!(
+                unique.len(),
+                nbs.len(),
+                "duplicate edge at node {id} level {level}"
+            );
             for &nb in &nbs {
                 assert_ne!(nb, id, "self-loop at node {id} level {level}");
                 assert!(nb < n);
-                assert!(g.level(nb) >= level, "edge {id}->{nb} at level {level} above {nb}'s level");
+                assert!(
+                    g.level(nb) >= level,
+                    "edge {id}->{nb} at level {level} above {nb}'s level"
+                );
             }
         }
     }
@@ -151,7 +176,12 @@ fn check_invariants_allowing(index: &Hnsw, max_unreachable: f64) {
 
 fn build_threads(n: usize, dim: usize, post: bool, threads: usize) -> (Vec<f32>, Hnsw) {
     let data = random_data(n, dim, 5);
-    let params = Params { m: 16, ef_construction: 100, post, seed: 9 };
+    let params = Params {
+        m: 16,
+        ef_construction: 100,
+        post,
+        seed: 9,
+    };
     let mut index = Hnsw::new(dim, Space::L2, params);
     index.add(&data, threads);
     (data, index)
@@ -215,7 +245,10 @@ fn level_distribution_matches_ml() {
     let (_, index) = build(20_000, 2, false);
     let g = index.graph();
     let upper = (0..20_000).filter(|&id| g.level(id) >= 1).count() as f64 / 20_000.0;
-    assert!((upper - 1.0 / 16.0).abs() < 0.01, "fraction above level 0: {upper}");
+    assert!(
+        (upper - 1.0 / 16.0).abs() < 0.01,
+        "fraction above level 0: {upper}"
+    );
 }
 
 #[test]
@@ -225,7 +258,11 @@ fn small_and_empty_indexes() {
     index.add(&[1.0, 0.0, 0.0], 1);
     assert_eq!(index.knn_query(&[0.0, 0.0, 0.0], 5, 10), [(0, 1.0)]);
     index.add(&[0.0, 2.0, 0.0, 0.0, 0.0, 0.5], 4);
-    let ids: Vec<u32> = index.knn_query(&[0.0, 0.0, 0.0], 5, 10).iter().map(|r| r.0).collect();
+    let ids: Vec<u32> = index
+        .knn_query(&[0.0, 0.0, 0.0], 5, 10)
+        .iter()
+        .map(|r| r.0)
+        .collect();
     assert_eq!(ids, [2, 0, 1]);
 }
 
@@ -237,7 +274,10 @@ fn cosine_ignores_magnitude() {
     assert_eq!(found[0].0, 0);
     assert!(found[0].1.abs() < 1e-3);
     assert_eq!(found[1].0, 2);
-    assert!((found[2].1 - 1.0).abs() < 1e-3, "orthogonal vector has distance 1");
+    assert!(
+        (found[2].1 - 1.0).abs() < 1e-3,
+        "orthogonal vector has distance 1"
+    );
 }
 
 #[test]
@@ -253,7 +293,14 @@ fn parallel_build_invariants_and_recall() {
 fn parallel_build_with_all_cores_and_incremental_add() {
     let dim = 16;
     let data = random_data(12_000, dim, 21);
-    let mut index = Hnsw::new(dim, Space::L2, Params { ef_construction: 100, ..Params::default() });
+    let mut index = Hnsw::new(
+        dim,
+        Space::L2,
+        Params {
+            ef_construction: 100,
+            ..Params::default()
+        },
+    );
     index.add(&data[..6_000 * dim], 0);
     index.add(&data[6_000 * dim..], 0);
     assert_eq!(index.len(), 12_000);
@@ -275,7 +322,11 @@ fn batch_query_matches_single_queries() {
         for (i, q) in queries.chunks_exact(dim).enumerate() {
             let single = index.knn_query(q, k, 50);
             let ids: Vec<i64> = single.iter().map(|r| r.0 as i64).collect();
-            assert_eq!(&labels[i * k..(i + 1) * k], &ids[..], "query {i}, threads {threads}");
+            assert_eq!(
+                &labels[i * k..(i + 1) * k],
+                &ids[..],
+                "query {i}, threads {threads}"
+            );
         }
     }
 }
@@ -296,7 +347,10 @@ fn concurrent_queries_from_many_threads() {
     let dim = 16;
     let (_, index) = build_threads(5_000, dim, false, 8);
     let queries = random_data(400, dim, 41);
-    let expected: Vec<_> = queries.chunks_exact(dim).map(|q| index.knn_query(q, 10, 40)).collect();
+    let expected: Vec<_> = queries
+        .chunks_exact(dim)
+        .map(|q| index.knn_query(q, 10, 40))
+        .collect();
     std::thread::scope(|s| {
         for t in 0..8 {
             let (index, queries, expected) = (&index, &queries, &expected);
@@ -360,11 +414,26 @@ fn diag_unreachable_by_threads() {
 #[test]
 fn frozen_and_build_forms_give_identical_results() {
     for space in [Space::L2, Space::Cosine] {
-        let mut index = Hnsw::new(16, space, Params { ef_construction: 100, ..Params::default() });
+        let mut index = Hnsw::new(
+            16,
+            space,
+            Params {
+                ef_construction: 100,
+                ..Params::default()
+            },
+        );
         index.add(&random_data(5_000, 16, 51), 4);
-        assert!(matches!(index.repr, Repr::Frozen(_)), "add leaves the index frozen");
+        assert!(
+            matches!(index.repr, Repr::Frozen(_)),
+            "add leaves the index frozen"
+        );
         let queries = random_data(200, 16, 52);
-        let run = |ix: &Hnsw| -> Vec<_> { queries.chunks_exact(16).map(|q| ix.knn_query(q, 10, 60)).collect() };
+        let run = |ix: &Hnsw| -> Vec<_> {
+            queries
+                .chunks_exact(16)
+                .map(|q| ix.knn_query(q, 10, 60))
+                .collect()
+        };
         let frozen = run(&index);
         index.thaw();
         assert!(matches!(index.repr, Repr::Build { .. }));
@@ -378,7 +447,9 @@ fn frozen_and_build_forms_give_identical_results() {
 fn frozen_level0_starts_on_a_cache_line() {
     let mut index = Hnsw::new(24, Space::L2, Params::default());
     index.add(&random_data(1_000, 24, 53), 1);
-    let Repr::Frozen(f) = &index.repr else { panic!("not frozen") };
+    let Repr::Frozen(f) = &index.repr else {
+        panic!("not frozen")
+    };
     let v = f.view();
     assert_eq!(v.vector(0).as_ptr() as usize % 64, 0);
     assert_eq!(v.vector(999).as_ptr() as usize % 64, 0);

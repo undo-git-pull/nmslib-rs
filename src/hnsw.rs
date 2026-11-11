@@ -22,7 +22,9 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
+use std::sync::atomic::{
+    AtomicU32, AtomicU64, AtomicUsize, Ordering::Acquire, Ordering::Relaxed, Ordering::Release,
+};
 use std::sync::{Arc, Mutex};
 
 use fearless_simd::{Level, Simd, dispatch};
@@ -59,7 +61,12 @@ pub struct Params {
 
 impl Default for Params {
     fn default() -> Self {
-        Self { m: 16, ef_construction: 200, post: true, seed: 0 }
+        Self {
+            m: 16,
+            ef_construction: 200,
+            post: true,
+            seed: 0,
+        }
     }
 }
 
@@ -75,7 +82,9 @@ impl Eq for Cand {}
 
 impl Ord for Cand {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.dist.total_cmp(&other.dist).then(self.id.cmp(&other.id))
+        self.dist
+            .total_cmp(&other.dist)
+            .then(self.id.cmp(&other.id))
     }
 }
 
@@ -216,13 +225,16 @@ impl Graph {
     pub(crate) fn grow(&mut self, levels: &[u8]) {
         for &level in levels {
             let start = *self.upper_start.last().unwrap();
-            self.upper_start.push(start + level as usize * (1 + self.max_m));
+            self.upper_start
+                .push(start + level as usize * (1 + self.max_m));
             self.levels.push(level);
             self.locks.push(Mutex::new(()));
         }
         let n = self.levels.len();
-        self.links0.resize_with(n * (1 + self.max_m0), || AtomicU32::new(0));
-        self.upper.resize_with(*self.upper_start.last().unwrap(), || AtomicU32::new(0));
+        self.links0
+            .resize_with(n * (1 + self.max_m0), || AtomicU32::new(0));
+        self.upper
+            .resize_with(*self.upper_start.last().unwrap(), || AtomicU32::new(0));
     }
 
     fn block(&self, id: u32, level: usize) -> &[AtomicU32] {
@@ -282,13 +294,17 @@ impl Graph {
     fn entry_state(&self) -> Entry {
         match self.entry.load(Acquire) {
             NO_ENTRY => Entry::default(),
-            packed => Entry { node: Some(packed as u32), max_level: (packed >> 32) as usize },
+            packed => Entry {
+                node: Some(packed as u32),
+                max_level: (packed >> 32) as usize,
+            },
         }
     }
 
     /// Callers hold `raise_lock`, or have exclusive access.
     pub(crate) fn set_entry(&self, node: u32, max_level: usize) {
-        self.entry.store((max_level as u64) << 32 | node as u64, Release);
+        self.entry
+            .store((max_level as u64) << 32 | node as u64, Release);
     }
 
     pub(crate) fn entry(&self) -> Option<u32> {
@@ -358,7 +374,10 @@ impl ScratchPool {
     fn get(&self, n: usize) -> PooledScratch<'_> {
         let mut scratch = self.free.lock().unwrap().pop().unwrap_or_default();
         scratch.search.visited.ensure_capacity(n);
-        PooledScratch { pool: self, scratch: Some(scratch) }
+        PooledScratch {
+            pool: self,
+            scratch: Some(scratch),
+        }
     }
 }
 
@@ -407,10 +426,17 @@ impl Hnsw {
     pub fn new(dim: usize, space: Space, params: Params) -> Self {
         assert!(dim > 0, "dim must be positive");
         assert!(params.m >= 2, "M must be at least 2");
-        assert!(params.ef_construction >= 1, "ef_construction must be positive");
+        assert!(
+            params.ef_construction >= 1,
+            "ef_construction must be positive"
+        );
         Self {
             repr: Repr::Build {
-                store: Store { dim, space, data: Vec::new() },
+                store: Store {
+                    dim,
+                    space,
+                    data: Vec::new(),
+                },
                 graph: Graph::new(params.m, 2 * params.m),
             },
             ml: 1.0 / (params.m as f64).ln(),
@@ -510,9 +536,18 @@ impl Hnsw {
     /// and the index can grow. Adding to a loaded index draws levels from a
     /// fresh generator seeded with the saved seed.
     pub fn load(path: &Path, mmap: bool) -> Result<Hnsw, LoadError> {
-        let frozen = if mmap { Frozen::map(path)? } else { Frozen::read(path)? };
+        let frozen = if mmap {
+            Frozen::map(path)?
+        } else {
+            Frozen::read(path)?
+        };
         let h = frozen.header().clone();
-        let params = Params { m: h.m, ef_construction: h.ef_construction, post: h.post, seed: h.seed };
+        let params = Params {
+            m: h.m,
+            ef_construction: h.ef_construction,
+            post: h.post,
+            seed: h.seed,
+        };
         let mut index = Hnsw::new(h.dim, h.space, params);
         index.repr = Repr::Frozen(frozen);
         Ok(index)
@@ -536,7 +571,10 @@ impl Hnsw {
     pub fn add_vec(&mut self, vectors: Vec<f32>, threads: usize) {
         assert!(!self.is_read_only(), "index is memory-mapped and read-only");
         let dim = self.dim();
-        assert!(vectors.len() % dim == 0, "vectors length is not a multiple of dim");
+        assert!(
+            vectors.len() % dim == 0,
+            "vectors length is not a multiple of dim"
+        );
         let first_id = self.len();
         let n = first_id + vectors.len() / dim;
         assert!(n < u32::MAX as usize, "too many vectors");
@@ -583,7 +621,10 @@ impl Hnsw {
     pub fn knn_query(&self, query: &[f32], k: usize, ef_search: usize) -> Vec<(u32, f32)> {
         assert_eq!(query.len(), self.dim(), "query has the wrong dimension");
         let mut scratch = self.scratch.get(self.len());
-        self.search(query, k, ef_search, &mut scratch).iter().map(|c| (c.id, c.dist)).collect()
+        self.search(query, k, ef_search, &mut scratch)
+            .iter()
+            .map(|c| (c.id, c.dist))
+            .collect()
     }
 
     /// Queries every row of `queries` and writes the results row by row into
@@ -600,9 +641,15 @@ impl Hnsw {
     ) {
         let dim = self.dim();
         assert!(k > 0, "k must be positive");
-        assert!(queries.len() % dim == 0, "queries length is not a multiple of dim");
+        assert!(
+            queries.len() % dim == 0,
+            "queries length is not a multiple of dim"
+        );
         let nq = queries.len() / dim;
-        assert!(labels.len() == nq * k && distances.len() == nq * k, "output buffers have the wrong size");
+        assert!(
+            labels.len() == nq * k && distances.len() == nq * k,
+            "output buffers have the wrong size"
+        );
         let n = self.len();
         let one = |scratch: &mut Scratch, q: &[f32], labels: &mut [i64], dists: &mut [f32]| {
             labels.fill(-1);
@@ -614,7 +661,11 @@ impl Hnsw {
         };
         if threads == 1 {
             let mut scratch = self.scratch.get(n);
-            for ((q, l), d) in queries.chunks_exact(dim).zip(labels.chunks_mut(k)).zip(distances.chunks_mut(k)) {
+            for ((q, l), d) in queries
+                .chunks_exact(dim)
+                .zip(labels.chunks_mut(k))
+                .zip(distances.chunks_mut(k))
+            {
                 one(&mut scratch, q, l, d);
             }
             return;
@@ -624,14 +675,25 @@ impl Hnsw {
                 .par_chunks_exact(dim)
                 .zip(labels.par_chunks_mut(k))
                 .zip(distances.par_chunks_mut(k))
-                .for_each_init(|| self.scratch.get(n), |scratch, ((q, l), d)| one(scratch, q, l, d));
+                .for_each_init(
+                    || self.scratch.get(n),
+                    |scratch, ((q, l), d)| one(scratch, q, l, d),
+                );
         });
     }
 
     /// The `k` nearest of `query`, nearest first, in `scratch.found`.
-    fn search<'s>(&self, query: &[f32], k: usize, ef_search: usize, scratch: &'s mut Scratch) -> &'s [Cand] {
+    fn search<'s>(
+        &self,
+        query: &[f32],
+        k: usize,
+        ef_search: usize,
+        scratch: &'s mut Scratch,
+    ) -> &'s [Cand] {
         match &self.repr {
-            Repr::Build { store, graph } => self.search_in(&BuildView { store, graph }, query, k, ef_search, scratch),
+            Repr::Build { store, graph } => {
+                self.search_in(&BuildView { store, graph }, query, k, ef_search, scratch)
+            }
             Repr::Frozen(f) => self.search_in(&f.view(), query, k, ef_search, scratch),
         }
     }
@@ -646,7 +708,9 @@ impl Hnsw {
     ) -> &'s [Cand] {
         let entry = view.entry();
         scratch.found.clear();
-        let Some(ep_id) = entry.node else { return &scratch.found };
+        let Some(ep_id) = entry.node else {
+            return &scratch.found;
+        };
         let q = if view.space() == Space::Cosine {
             scratch.query.clear();
             scratch.query.extend_from_slice(query);
@@ -684,7 +748,10 @@ impl Hnsw {
                 Some(p) if p.current_num_threads() == threads => p.clone(),
                 _ => {
                     let p = Arc::new(
-                        rayon::ThreadPoolBuilder::new().num_threads(threads).build().expect("thread pool"),
+                        rayon::ThreadPoolBuilder::new()
+                            .num_threads(threads)
+                            .build()
+                            .expect("thread pool"),
                     );
                     *cached = Some(p.clone());
                     p
@@ -707,7 +774,11 @@ impl Hnsw {
         let mut rest = order;
         if threads == 1 || graph.entry().is_none() {
             let mut scratch = self.scratch.get(n);
-            let sequential = if threads == 1 { order.len() } else { 1.min(order.len()) };
+            let sequential = if threads == 1 {
+                order.len()
+            } else {
+                1.min(order.len())
+            };
             for &id in &order[..sequential] {
                 insert(&mut scratch, id);
             }
@@ -765,7 +836,9 @@ impl Hnsw {
             (1..n).for_each(|id| merge(&mut buf, id));
         } else {
             self.run_parallel(threads, || {
-                (1..n).into_par_iter().for_each_init(LinkBuffers::default, |buf, id| merge(buf, id));
+                (1..n)
+                    .into_par_iter()
+                    .for_each_init(LinkBuffers::default, |buf, id| merge(buf, id));
             });
         }
     }
@@ -774,7 +847,9 @@ impl Hnsw {
     #[cfg(test)]
     pub(crate) fn graph(&self) -> Graph {
         match &self.repr {
-            Repr::Build { store, graph } => graph_from_view(&BuildView { store, graph }, self.params.m),
+            Repr::Build { store, graph } => {
+                graph_from_view(&BuildView { store, graph }, self.params.m)
+            }
             Repr::Frozen(f) => graph_from_view(&f.view(), self.params.m),
         }
     }
@@ -793,7 +868,11 @@ fn store_from_view<V: View>(v: &V, dim: usize) -> Store {
     for id in 0..v.len() as u32 {
         data.extend_from_slice(v.vector(id));
     }
-    Store { dim, space: v.space(), data }
+    Store {
+        dim,
+        space: v.space(),
+        data,
+    }
 }
 
 fn graph_from_view<V: View>(v: &V, m: usize) -> Graph {
@@ -818,7 +897,11 @@ fn graph_from_view<V: View>(v: &V, m: usize) -> Graph {
 fn stats_of<V: View>(v: &V) -> GraphStats {
     {
         let entry = v.entry();
-        let levels = if entry.node.is_some() { entry.max_level + 1 } else { 0 };
+        let levels = if entry.node.is_some() {
+            entry.max_level + 1
+        } else {
+            0
+        };
         let mut nodes_per_level = vec![0usize; levels];
         let mut edges_per_level = vec![0usize; levels];
         for id in 0..v.len() as u32 {
@@ -832,7 +915,10 @@ fn stats_of<V: View>(v: &V) -> GraphStats {
             .zip(&edges_per_level)
             .map(|(&n, &e)| if n == 0 { 0.0 } else { e as f64 / n as f64 })
             .collect();
-        GraphStats { nodes_per_level, mean_degree }
+        GraphStats {
+            nodes_per_level,
+            mean_degree,
+        }
     }
 }
 
@@ -874,14 +960,31 @@ fn insert_node<S: Simd>(
 
     let view = BuildView { store, graph };
     let q = store.vector(id);
-    let mut ep = Cand { dist: store.dist(simd, q, entry_id), id: entry_id };
+    let mut ep = Cand {
+        dist: store.dist(simd, q, entry_id),
+        id: entry_id,
+    };
     for l in (level + 1..=max_level).rev() {
         ep = greedy(simd, &view, q, ep, l);
     }
-    let Scratch { search, found, selected, link, .. } = scratch;
+    let Scratch {
+        search,
+        found,
+        selected,
+        link,
+        ..
+    } = scratch;
     for l in (0..=level.min(max_level)).rev() {
         search_layer(simd, &view, search, q, ep, params.ef_construction, l, found);
-        select_neighbors(simd, store, found, params.m, false, selected, &mut link.rejected);
+        select_neighbors(
+            simd,
+            store,
+            found,
+            params.m,
+            false,
+            selected,
+            &mut link.rejected,
+        );
         // NMSLIB links farthest first; the closest selected seeds the next level.
         for c in selected.iter().rev() {
             add_link(simd, store, graph, c.id, id, l, link);
@@ -933,7 +1036,12 @@ fn search_layer<S: Simd, V: View>(
     simd.vectorize(
         #[inline(always)]
         || {
-            let SearchBuffers { visited, candidates, results, fresh } = buf;
+            let SearchBuffers {
+                visited,
+                candidates,
+                results,
+                fresh,
+            } = buf;
             visited.clear();
             visited.insert(ep.id);
             candidates.clear();
@@ -1058,7 +1166,12 @@ fn add_link<S: Simd>(
     simd.vectorize(
         #[inline(always)]
         || {
-            let LinkBuffers { ids, cands, kept, rejected } = buf;
+            let LinkBuffers {
+                ids,
+                cands,
+                kept,
+                rejected,
+            } = buf;
             let _lock = graph.locks[id as usize].lock().unwrap();
             ids.clear();
             ids.extend(graph.neighbors(id, level));
@@ -1072,7 +1185,10 @@ fn add_link<S: Simd>(
             }
             let base = store.vector(id);
             cands.clear();
-            cands.extend(ids.iter().chain([&nb]).map(|&x| Cand { dist: store.dist(simd, base, x), id: x }));
+            cands.extend(ids.iter().chain([&nb]).map(|&x| Cand {
+                dist: store.dist(simd, base, x),
+                id: x,
+            }));
             cands.sort_unstable();
             select_neighbors(simd, store, cands, cap, false, kept, rejected);
             ids.clear();

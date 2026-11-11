@@ -25,10 +25,16 @@ pub fn dot(a: &[f32], b: &[f32]) -> f32 {
 /// `l2_sq` for a SIMD level the caller has already entered.
 #[inline(always)]
 pub fn l2_sq_in<S: Simd>(simd: S, a: &[f32], b: &[f32]) -> f32 {
-    reduce(simd, a, b, |x, y, acc| {
-        let d = x - y;
-        d.mul_add(d, acc)
-    }, |x, y| (x - y) * (x - y))
+    reduce(
+        simd,
+        a,
+        b,
+        |x, y, acc| {
+            let d = x - y;
+            d.mul_add(d, acc)
+        },
+        |x, y| (x - y) * (x - y),
+    )
 }
 
 /// `dot` for a SIMD level the caller has already entered.
@@ -155,7 +161,11 @@ pub fn selected_level_name() -> &'static str {
     if level.as_neon().is_some() {
         return "NEON";
     }
-    if level.is_fallback() { "scalar fallback" } else { "unknown" }
+    if level.is_fallback() {
+        "scalar fallback"
+    } else {
+        "unknown"
+    }
 }
 
 /// Scalar reference for `l2_sq`, used in tests and benchmarks.
@@ -183,7 +193,10 @@ mod tests {
     /// Scalar references computed in f64, so the comparison measures the
     /// kernel's error rather than the f32 reference's.
     fn l2_sq_f64(a: &[f32], b: &[f32]) -> f64 {
-        a.iter().zip(b).map(|(&x, &y)| (x as f64 - y as f64).powi(2)).sum()
+        a.iter()
+            .zip(b)
+            .map(|(&x, &y)| (x as f64 - y as f64).powi(2))
+            .sum()
     }
 
     fn dot_f64(a: &[f32], b: &[f32]) -> f64 {
@@ -191,11 +204,16 @@ mod tests {
     }
 
     fn abs_f64(a: &[f32], b: &[f32]) -> f64 {
-        a.iter().zip(b).map(|(&x, &y)| (x as f64 * y as f64).abs()).sum()
+        a.iter()
+            .zip(b)
+            .map(|(&x, &y)| (x as f64 * y as f64).abs())
+            .sum()
     }
 
     fn random_vec(rng: &mut StdRng, dim: usize, scale: f32) -> Vec<f32> {
-        (0..dim).map(|_| rng.random_range(-1.0f32..1.0) * scale).collect()
+        (0..dim)
+            .map(|_| rng.random_range(-1.0f32..1.0) * scale)
+            .collect()
     }
 
     /// Relative tolerance of 1e-4. For dot products, cancellation can make
@@ -213,10 +231,20 @@ mod tests {
         let ctx = format!("dim {}", a.len());
         let want = l2_sq_f64(a, b);
         assert_close(l2_sq(a, b), want, want, &format!("l2_sq {ctx}"));
-        assert_close(l2_sq_scalar(a, b), want, want, &format!("l2_sq_scalar {ctx}"));
+        assert_close(
+            l2_sq_scalar(a, b),
+            want,
+            want,
+            &format!("l2_sq_scalar {ctx}"),
+        );
         let mag = abs_f64(a, b);
         assert_close(dot(a, b), dot_f64(a, b), mag, &format!("dot {ctx}"));
-        assert_close(dot_scalar(a, b), dot_f64(a, b), mag, &format!("dot_scalar {ctx}"));
+        assert_close(
+            dot_scalar(a, b),
+            dot_f64(a, b),
+            mag,
+            &format!("dot_scalar {ctx}"),
+        );
     }
 
     #[test]
@@ -230,7 +258,10 @@ mod tests {
                     check(&a, &b);
                     let simd = l2_sq(&a, &b) as f64;
                     let scalar = l2_sq_scalar(&a, &b) as f64;
-                    assert!((simd - scalar).abs() <= 1e-4 * scalar, "dim {dim}: {simd} vs {scalar}");
+                    assert!(
+                        (simd - scalar).abs() <= 1e-4 * scalar,
+                        "dim {dim}: {simd} vs {scalar}"
+                    );
                 }
             }
         }
@@ -294,16 +325,33 @@ mod tests {
                 let d = simd.vectorize(|| dot_in(simd, &a, &b));
                 let want = l2_sq_f64(&a, &b);
                 assert_close(l2, want, want, &format!("{simd:?} l2_sq dim {dim}"));
-                assert_close(d, dot_f64(&a, &b), abs_f64(&a, &b), &format!("{simd:?} dot dim {dim}"));
+                assert_close(
+                    d,
+                    dot_f64(&a, &b),
+                    abs_f64(&a, &b),
+                    &format!("{simd:?} dot dim {dim}"),
+                );
             }
         }
         let level = Level::new();
         let mut rng = StdRng::seed_from_u64(11);
         let mut ran = 0;
-        if let Some(s) = level.as_sse2() { run(s, &mut rng); ran += 1; }
-        if let Some(s) = level.as_sse4_2() { run(s, &mut rng); ran += 1; }
-        if let Some(s) = level.as_avx2() { run(s, &mut rng); ran += 1; }
-        if let Some(s) = level.as_avx512() { run(s, &mut rng); ran += 1; }
+        if let Some(s) = level.as_sse2() {
+            run(s, &mut rng);
+            ran += 1;
+        }
+        if let Some(s) = level.as_sse4_2() {
+            run(s, &mut rng);
+            ran += 1;
+        }
+        if let Some(s) = level.as_avx2() {
+            run(s, &mut rng);
+            ran += 1;
+        }
+        if let Some(s) = level.as_avx512() {
+            run(s, &mut rng);
+            ran += 1;
+        }
         assert!(ran > 0);
         println!("checked {ran} x86 SIMD levels");
     }
@@ -316,15 +364,17 @@ mod tests {
     }
 
     fn vec_pair() -> impl Strategy<Value = (Vec<f32>, Vec<f32>)> {
-        (0usize..=2048, prop_oneof![Just(1.0f32), Just(1e-3), Just(1e3)]).prop_flat_map(
-            |(len, scale)| {
+        (
+            0usize..=2048,
+            prop_oneof![Just(1.0f32), Just(1e-3), Just(1e3)],
+        )
+            .prop_flat_map(|(len, scale)| {
                 let elem = (-1.0f32..1.0).prop_map(move |x| x * scale);
                 (
                     proptest::collection::vec(elem.clone(), len),
                     proptest::collection::vec(elem, len),
                 )
-            },
-        )
+            })
     }
 
     proptest! {
