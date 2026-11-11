@@ -1,13 +1,14 @@
 # nmslib-rs
 
 [![PyPI](https://img.shields.io/pypi/v/nmslib-rs)](https://pypi.org/project/nmslib-rs/)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/nmslib-rs/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/nmslib-rs/)
 [![ci](https://img.shields.io/github/actions/workflow/status/undo-git-pull/nmslib-rs/ci.yml?branch=main&label=ci)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/actions/workflow/status/undo-git-pull/nmslib-rs/release.yml?label=release)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/undo-git-pull/nmslib-rs/blob/main/LICENSE)
 
 | Python | Linux | macOS |
 |---|---|---|
+| 3.11 | [![Python 3.11 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.11%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.11 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.11%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
 | 3.12 | [![Python 3.12 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.12%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.12 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.12%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
 | 3.13 | [![Python 3.13 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.13%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.13 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.13%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
 | 3.14 | [![Python 3.14 on ubuntu-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.14%20%28ubuntu-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) | [![Python 3.14 on macos-latest](https://img.shields.io/github/check-runs/undo-git-pull/nmslib-rs/main?nameFilter=Python%203.14%20%28macos-latest%29&label=build)](https://github.com/undo-git-pull/nmslib-rs/actions/workflows/ci.yml) |
@@ -21,7 +22,7 @@ The build follows NMSLIB's choices for level generation, neighbor selection, ove
 
 ## Installing
 
-nmslib-rs needs Rust 1.89 or later and Python 3.12 or later. Build and install it into a virtual environment with maturin:
+nmslib-rs needs Rust 1.89 or later and Python 3.11 or later. Build and install it into a virtual environment with maturin:
 
 ```sh
 python -m venv .venv

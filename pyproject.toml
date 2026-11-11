@@ -6,13 +6,14 @@ build-backend = "maturin"
 name = "nmslib-rs"
 dynamic = ["version"]
 description = "HNSW approximate nearest neighbor search in Rust"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
 dependencies = ["numpy>=2"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
