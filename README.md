@@ -22,18 +22,13 @@ The build follows NMSLIB's choices for level generation, neighbor selection, ove
 
 ## Installing
 
-nmslib-rs needs Rust 1.89 or later and Python 3.11 or later. Build and install it into a virtual environment with maturin:
-
 ```sh
-python -m venv .venv
-source .venv/bin/activate
-pip install maturin numpy
-maturin develop --release
+pip install nmslib-rs
 ```
 
-`pip install -e '.[dev]'` also installs pytest, h5py and `nmslib` for the tests and benchmarks.
+The package is imported as `nmslib_rs`. PyPI has wheels for CPython 3.11, 3.12, 3.13 and 3.14 on Linux (x86_64 and aarch64, glibc 2.17 or later), macOS (x86_64 and Apple Silicon) and Windows (x64). On any other platform pip builds from the source distribution, which needs Rust 1.89 or later. The only runtime dependency is NumPy 2.
 
-`.cargo/config.toml` points PyO3 at `.venv/bin/python`, so `cargo test` and `cargo bench` expect the virtual environment to be at `.venv`.
+To work on nmslib-rs itself, see [Development](#development).
 
 ## Python API
 
@@ -146,13 +141,42 @@ Returns the name of the SIMD instruction set the distance kernels selected on th
 - Labels are always insertion positions. Keep your own array to map them to external ids.
 - Floating-point distances differ slightly between the AVX and NEON kernels, so a file saved on one architecture and loaded on another can return slightly different distances and, rarely, a different order among near ties.
 
-## Tests and benchmarks
+## Development
+
+Building from a checkout needs Rust 1.89 or later and Python 3.11 or later. Create a virtual environment at `.venv`, and install the package in editable mode with its development dependencies:
 
 ```sh
-cargo test --release       # Rust unit and property tests
-pytest tests/              # Python binding and persistence tests
+git clone https://github.com/undo-git-pull/nmslib-rs.git
+cd nmslib-rs
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+```
+
+`pip install -e` builds the extension once and installs the `dev` extra: maturin, pytest, h5py and `nmslib` 2.1.2 for the tests and benchmarks. After editing anything in `src/`, rebuild in place with:
+
+```sh
+maturin develop --release
+```
+
+`maturin develop` compiles the Rust code and installs it into the active virtual environment. It does not watch for changes, so run it after each edit. Without `--release` it compiles faster, but the unoptimized build queries much more slowly, so use `--release` before measuring anything.
+
+`.cargo/config.toml` points PyO3 at `.venv/bin/python`, so `cargo test` and `cargo bench` expect the virtual environment to be at `.venv`.
+
+### Tests
+
+```sh
+cargo test                 # Rust unit and property tests
+pytest tests/              # Python binding, brute-force and persistence tests
+cargo fmt --check          # formatting, enforced by CI
 cargo bench                # SIMD kernels against the scalar reference
 ```
+
+`cargo test` builds with optimizations (`[profile.test]` sets `opt-level = 3`) because the graph tests build 10,000-node indexes. `pytest` runs against whatever `maturin develop` last installed, so rebuild first after changing Rust code.
+
+CI runs the formatting check, the Rust tests and the Python tests on Ubuntu and macOS with Python 3.11 to 3.14 on every push. [RELEASING.md](RELEASING.md) describes how wheels are built and published to PyPI.
+
+### Benchmark scripts
 
 The scripts in `bench/` compare recall and speed with NMSLIB. They expect the ann-benchmarks HDF5 files (`sift-128-euclidean.hdf5`, `glove-100-angular.hdf5`) in `bench/data/`.
 
@@ -172,8 +196,6 @@ python bench/brute_force.py --n 100000 --queries 500
 ```
 
 `bench/mmap_pss.py` measures the memory of several processes sharing one mapped index. It reads `/proc`, so it runs on Linux only.
-
-CI runs the Rust and Python tests on Ubuntu and macOS for every push. [RELEASING.md](RELEASING.md) describes how wheels are built and published to PyPI.
 
 ## Benchmark
 
