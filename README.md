@@ -15,7 +15,7 @@
 
 A Rust implementation of HNSW, the graph index behind NMSLIB's `hnsw` method, with Python bindings built by maturin. It searches dense `float32` vectors under L2 or cosine distance, builds in parallel, and saves indexes to a file that several processes can memory-map and share.
 
-The build follows NMSLIB's choices for level generation, neighbor selection, overflow pruning and the `post=2` second pass (recorded in [NOTES.md](NOTES.md)), so recall at a given `ef` matches NMSLIB's. The API and file format are its own; nmslib-rs does not read NMSLIB indexes and is not a drop-in replacement for the `nmslib` module.
+The build follows NMSLIB's choices for level generation, neighbor selection, overflow pruning and the `post=2` second pass (recorded in [NOTES.md](https://github.com/undo-git-pull/nmslib-rs/blob/main/NOTES.md)), so recall at a given `ef` matches NMSLIB's. The API and file format are its own; nmslib-rs does not read NMSLIB indexes and is not a drop-in replacement for the `nmslib` module.
 
 > [!WARNING]
 > nmslib-rs has not been tested in production workloads. It implements a small part of NMSLIB: the `hnsw` and `brute_force` methods, with dense `float32` vectors under L2 and cosine distance. NMSLIB's other search methods, its other distance spaces, and its sparse and string data types are not included.
@@ -28,7 +28,7 @@ pip install nmslib-rs
 
 The package is imported as `nmslib_rs`. PyPI has wheels for CPython 3.11, 3.12, 3.13 and 3.14 on Linux (x86_64 and aarch64, glibc 2.17 or later), macOS (x86_64 and Apple Silicon) and Windows (x64). On any other platform pip builds from the source distribution, which needs Rust 1.89 or later. The only runtime dependency is NumPy 2.
 
-To work on nmslib-rs itself, see [Development](#development).
+To work on nmslib-rs itself, see [Development](https://github.com/undo-git-pull/nmslib-rs#development).
 
 ## Python API
 
@@ -174,7 +174,7 @@ cargo bench                # SIMD kernels against the scalar reference
 
 `cargo test` builds with optimizations (`[profile.test]` sets `opt-level = 3`) because the graph tests build 10,000-node indexes. `pytest` runs against whatever `maturin develop` last installed, so rebuild first after changing Rust code.
 
-CI runs the formatting check, the Rust tests and the Python tests on Ubuntu and macOS with Python 3.11 to 3.14 on every push. [RELEASING.md](RELEASING.md) describes how wheels are built and published to PyPI.
+CI runs the formatting check, the Rust tests and the Python tests on Ubuntu and macOS with Python 3.11 to 3.14 on every push. [RELEASING.md](https://github.com/undo-git-pull/nmslib-rs/blob/main/RELEASING.md) describes how wheels are built and published to PyPI.
 
 ### Benchmark scripts
 
@@ -213,14 +213,14 @@ SIFT1M (1,000,000 vectors, 128 dimensions, L2), `M=16`, `ef_construction=200`, `
 
 On 32 threads the build took 25.6 s against NMSLIB's 51.8 s, and the index used 731 MB against 2,094 MB. The PyPI `nmslib` wheel, which is built without native CPU flags, runs about half as fast as the native build in this table.
 
-On an Apple M1 Max, nmslib-rs ran at 0.93x NMSLIB's QPS at efSearch 10 and 1.08 to 1.18x at efSearch 20 to 640, with the same recall. When 8 processes map one saved SIFT1M index (684 MB), their summed PSS is 909 MB; 8 private copies would take 5,312 MB. Details of each measurement, including the GloVe-100 cosine runs, are in [NOTES.md](NOTES.md) and `bench/results/`.
+On an Apple M1 Max, nmslib-rs ran at 0.93x NMSLIB's QPS at efSearch 10 and 1.08 to 1.18x at efSearch 20 to 640, with the same recall. When 8 processes map one saved SIFT1M index (684 MB), their summed PSS is 909 MB; 8 private copies would take 5,312 MB. Details of each measurement, including the GloVe-100 cosine runs, are in [NOTES.md](https://github.com/undo-git-pull/nmslib-rs/blob/main/NOTES.md) and `bench/results/`.
 
 ## Acknowledgments
 
-nmslib-rs reimplements the HNSW method from [NMSLIB](https://github.com/nmslib/nmslib), the Non-Metric Space Library by Bilegsaikhan Naidan, Leonid Boytsov, Yury Malkov, David Novak and other contributors, distributed under the Apache License 2.0. The neighbor selection, pruning, `post=2` merge, prefetching and interleaved level-0 layout follow NMSLIB's `hnsw.cc` as described in [NOTES.md](NOTES.md). No NMSLIB source code is included in this repository. The `bench/` scripts use the `nmslib` Python package as the reference for recall and speed.
+nmslib-rs reimplements the HNSW method from [NMSLIB](https://github.com/nmslib/nmslib), the Non-Metric Space Library by Bilegsaikhan Naidan, Leonid Boytsov, Yury Malkov, David Novak and other contributors, distributed under the Apache License 2.0. The neighbor selection, pruning, `post=2` merge, prefetching and interleaved level-0 layout follow NMSLIB's `hnsw.cc` as described in [NOTES.md](https://github.com/undo-git-pull/nmslib-rs/blob/main/NOTES.md). No NMSLIB source code is included in this repository. The `bench/` scripts use the `nmslib` Python package as the reference for recall and speed.
 
 HNSW was introduced by Yu. A. Malkov and D. A. Yashunin in "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs", IEEE Transactions on Pattern Analysis and Machine Intelligence 42(4), 2020 ([arXiv:1603.09320](https://arxiv.org/abs/1603.09320)).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/undo-git-pull/nmslib-rs/blob/main/LICENSE).
