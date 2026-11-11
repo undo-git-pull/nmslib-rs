@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing as mp
+import platform
 import sys
 import time
 from importlib.metadata import version
@@ -28,8 +29,12 @@ import numpy as np
 import common
 
 POST = 2
-WHEEL_NOTE = ("nmslib 2.1.2 PyPI wheel is compiled for baseline SSE2 only "
-              "(no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected.")
+if platform.machine() in ("arm64", "aarch64"):
+    WHEEL_NOTE = ("nmslib 2.1.2 built from the sdist on Apple Silicon; its L2 kernel compiles "
+                  "to NEON (fsub.4s/fmla.4s) with prefetch (prfm). No AVX on ARM.")
+else:
+    WHEEL_NOTE = ("nmslib 2.1.2 PyPI wheel is compiled for baseline SSE2 only "
+                  "(no SSE4/AVX/AVX2); QPS is lower than a native build. Recall is unaffected.")
 
 
 def run_build(dataset: str, n: int, seed: int, threads: int) -> dict:

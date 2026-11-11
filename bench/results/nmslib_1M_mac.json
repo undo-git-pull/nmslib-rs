@@ -1,0 +1,231 @@
+{
+  "library": "nmslib",
+  "library_version": "2.1.2",
+  "dataset": "sift-128-euclidean",
+  "space": "l2",
+  "n_base": 1000000,
+  "n_queries": 10000,
+  "k": 10,
+  "recall_metric": "distance-based recall@10 (ann-benchmarks style); recall_ids is plain id overlap",
+  "query_threads": 1,
+  "params": {
+    "M": 16,
+    "efConstruction": 200,
+    "post": 2,
+    "indexThreadQty": 10
+  },
+  "machine": {
+    "cpu": "Apple M1 Max",
+    "cpu_count": 10,
+    "python": "3.12.10",
+    "numpy": "2.5.4",
+    "git_commit": "abc499d",
+    "date": "2026-11-11T10:55:58+0100"
+  },
+  "notes": [
+    "nmslib 2.1.2 built from the sdist on Apple Silicon; its L2 kernel compiles to NEON (fsub.4s/fmla.4s) with prefetch (prfm). No AVX on ARM."
+  ],
+  "builds": [
+    {
+      "insertion_order_seed": 1,
+      "build_time_s": 199.84,
+      "memory": {
+        "rss_before_build_mb": 1038.5,
+        "peak_rss_build_mb": 3516.2,
+        "rss_after_build_mb": 3516.2,
+        "index_mb": 2477.7
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.77934,
+          "recall_ids": 0.77848,
+          "qps": 22607.0,
+          "query_time_s": 0.442,
+          "peak_rss_mb": 3761.2
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.88757,
+          "recall_ids": 0.88663,
+          "qps": 14096.7,
+          "query_time_s": 0.709,
+          "peak_rss_mb": 3761.2
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.95645,
+          "recall_ids": 0.95548,
+          "qps": 9292.9,
+          "query_time_s": 1.076,
+          "peak_rss_mb": 3761.2
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.98754,
+          "recall_ids": 0.98673,
+          "qps": 5335.8,
+          "query_time_s": 1.874,
+          "peak_rss_mb": 3761.2
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99741,
+          "recall_ids": 0.9966,
+          "qps": 2940.9,
+          "query_time_s": 3.4,
+          "peak_rss_mb": 3761.2
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99964,
+          "recall_ids": 0.99883,
+          "qps": 1596.5,
+          "query_time_s": 6.264,
+          "peak_rss_mb": 3761.2
+        },
+        {
+          "ef_search": 640,
+          "recall": 0.99998,
+          "recall_ids": 0.99918,
+          "qps": 878.6,
+          "query_time_s": 11.382,
+          "peak_rss_mb": 3761.2
+        }
+      ]
+    },
+    {
+      "insertion_order_seed": 2,
+      "build_time_s": 200.29,
+      "memory": {
+        "rss_before_build_mb": 1038.4,
+        "peak_rss_build_mb": 3517.0,
+        "rss_after_build_mb": 3509.5,
+        "index_mb": 2471.1
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.77719,
+          "recall_ids": 0.77631,
+          "qps": 22428.9,
+          "query_time_s": 0.446,
+          "peak_rss_mb": 3713.6
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.88953,
+          "recall_ids": 0.8886,
+          "qps": 14874.7,
+          "query_time_s": 0.672,
+          "peak_rss_mb": 3716.9
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.95753,
+          "recall_ids": 0.95667,
+          "qps": 9291.3,
+          "query_time_s": 1.076,
+          "peak_rss_mb": 3716.9
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.98852,
+          "recall_ids": 0.98777,
+          "qps": 5336.9,
+          "query_time_s": 1.874,
+          "peak_rss_mb": 3716.9
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99742,
+          "recall_ids": 0.99665,
+          "qps": 2982.9,
+          "query_time_s": 3.352,
+          "peak_rss_mb": 3716.9
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99968,
+          "recall_ids": 0.99897,
+          "qps": 1645.0,
+          "query_time_s": 6.079,
+          "peak_rss_mb": 3716.9
+        },
+        {
+          "ef_search": 640,
+          "recall": 0.99999,
+          "recall_ids": 0.99926,
+          "qps": 897.3,
+          "query_time_s": 11.145,
+          "peak_rss_mb": 3716.9
+        }
+      ]
+    }
+  ],
+  "noise_band": [
+    {
+      "ef_search": 10,
+      "recall_min": 0.77719,
+      "recall_max": 0.77934,
+      "recall_mean": 0.778265,
+      "recall_std": 0.00152,
+      "spread": 0.00215,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 20,
+      "recall_min": 0.88757,
+      "recall_max": 0.88953,
+      "recall_mean": 0.88855,
+      "recall_std": 0.001386,
+      "spread": 0.00196,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 40,
+      "recall_min": 0.95645,
+      "recall_max": 0.95753,
+      "recall_mean": 0.95699,
+      "recall_std": 0.000764,
+      "spread": 0.00108,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 80,
+      "recall_min": 0.98754,
+      "recall_max": 0.98852,
+      "recall_mean": 0.98803,
+      "recall_std": 0.000693,
+      "spread": 0.00098,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 160,
+      "recall_min": 0.99741,
+      "recall_max": 0.99742,
+      "recall_mean": 0.997415,
+      "recall_std": 7e-06,
+      "spread": 1e-05,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 320,
+      "recall_min": 0.99964,
+      "recall_max": 0.99968,
+      "recall_mean": 0.99966,
+      "recall_std": 2.8e-05,
+      "spread": 4e-05,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 640,
+      "recall_min": 0.99998,
+      "recall_max": 0.99999,
+      "recall_mean": 0.999985,
+      "recall_std": 7e-06,
+      "spread": 1e-05,
+      "tolerance": 0.005
+    }
+  ]
+}

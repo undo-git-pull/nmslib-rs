@@ -188,8 +188,20 @@ def parity(reference: dict, builds: list[dict]) -> list[dict]:
     return rows
 
 
+IS_LINUX = platform.system() == "Linux"
+
+
 def rss_mb() -> dict:
-    """Current and peak resident set size of this process, in MB."""
+    """Current and peak resident set size of this process, in MB.
+
+    On macOS the peak is the process lifetime maximum (getrusage), since it
+    cannot be reset; builds run in fresh processes, so this is still the
+    build peak."""
+    if not IS_LINUX:
+        import resource
+        rss_kb = int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(os.getpid())]))
+        peak_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss  # bytes on macOS
+        return {"rss_mb": round(rss_kb / 1024, 1), "peak_rss_mb": round(peak_bytes / 2**20, 1)}
     out = {}
     for line in Path("/proc/self/status").read_text().splitlines():
         if line.startswith(("VmRSS:", "VmHWM:")):
@@ -198,16 +210,24 @@ def rss_mb() -> dict:
 
 
 def reset_peak_rss() -> None:
-    """Reset VmHWM to the current RSS (Linux >= 4.0)."""
-    Path("/proc/self/clear_refs").write_text("5")
+    """Reset VmHWM to the current RSS (Linux >= 4.0). No-op elsewhere."""
+    if IS_LINUX:
+        Path("/proc/self/clear_refs").write_text("5")
 
 
 def machine_info() -> dict:
-    cpu = next(
-        (l.split(":", 1)[1].strip() for l in Path("/proc/cpuinfo").read_text().splitlines()
-         if l.startswith("model name")),
-        platform.processor(),
-    )
+    if IS_LINUX:
+        cpu = next(
+            (l.split(":", 1)[1].strip() for l in Path("/proc/cpuinfo").read_text().splitlines()
+             if l.startswith("model name")),
+            platform.processor(),
+        )
+    else:
+        try:
+            cpu = subprocess.check_output(
+                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+        except Exception:
+            cpu = platform.processor()
     try:
         commit = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"], cwd=BENCH_DIR, text=True

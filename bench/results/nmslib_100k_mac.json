@@ -1,0 +1,231 @@
+{
+  "library": "nmslib",
+  "library_version": "2.1.2",
+  "dataset": "sift-128-euclidean",
+  "space": "l2",
+  "n_base": 100000,
+  "n_queries": 10000,
+  "k": 10,
+  "recall_metric": "distance-based recall@10 (ann-benchmarks style); recall_ids is plain id overlap",
+  "query_threads": 1,
+  "params": {
+    "M": 16,
+    "efConstruction": 200,
+    "post": 2,
+    "indexThreadQty": 10
+  },
+  "machine": {
+    "cpu": "Apple M1 Max",
+    "cpu_count": 10,
+    "python": "3.12.10",
+    "numpy": "2.5.4",
+    "git_commit": "abc499d",
+    "date": "2026-11-11T10:44:34+0100"
+  },
+  "notes": [
+    "nmslib 2.1.2 built from the sdist on Apple Silicon; its L2 kernel compiles to NEON (fsub.4s/fmla.4s) with prefetch (prfm). No AVX on ARM."
+  ],
+  "builds": [
+    {
+      "insertion_order_seed": 1,
+      "build_time_s": 11.32,
+      "memory": {
+        "rss_before_build_mb": 152.6,
+        "peak_rss_build_mb": 407.5,
+        "rss_after_build_mb": 407.5,
+        "index_mb": 254.9
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.85828,
+          "recall_ids": 0.85822,
+          "qps": 31462.9,
+          "query_time_s": 0.318,
+          "peak_rss_mb": 684.0
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.94468,
+          "recall_ids": 0.94463,
+          "qps": 21172.6,
+          "query_time_s": 0.472,
+          "peak_rss_mb": 685.8
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.98558,
+          "recall_ids": 0.98554,
+          "qps": 12781.9,
+          "query_time_s": 0.782,
+          "peak_rss_mb": 688.5
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.99774,
+          "recall_ids": 0.9977,
+          "qps": 7450.1,
+          "query_time_s": 1.342,
+          "peak_rss_mb": 688.6
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99978,
+          "recall_ids": 0.99974,
+          "qps": 4015.7,
+          "query_time_s": 2.49,
+          "peak_rss_mb": 688.6
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99995,
+          "recall_ids": 0.99991,
+          "qps": 2364.3,
+          "query_time_s": 4.23,
+          "peak_rss_mb": 688.6
+        },
+        {
+          "ef_search": 640,
+          "recall": 0.99999,
+          "recall_ids": 0.99995,
+          "qps": 1369.2,
+          "query_time_s": 7.304,
+          "peak_rss_mb": 688.6
+        }
+      ]
+    },
+    {
+      "insertion_order_seed": 2,
+      "build_time_s": 11.43,
+      "memory": {
+        "rss_before_build_mb": 152.5,
+        "peak_rss_build_mb": 407.9,
+        "rss_after_build_mb": 407.9,
+        "index_mb": 255.4
+      },
+      "sweep": [
+        {
+          "ef_search": 10,
+          "recall": 0.85695,
+          "recall_ids": 0.85692,
+          "qps": 30779.7,
+          "query_time_s": 0.325,
+          "peak_rss_mb": 684.2
+        },
+        {
+          "ef_search": 20,
+          "recall": 0.94464,
+          "recall_ids": 0.94458,
+          "qps": 19963.9,
+          "query_time_s": 0.501,
+          "peak_rss_mb": 688.2
+        },
+        {
+          "ef_search": 40,
+          "recall": 0.98542,
+          "recall_ids": 0.98535,
+          "qps": 12186.2,
+          "query_time_s": 0.821,
+          "peak_rss_mb": 688.9
+        },
+        {
+          "ef_search": 80,
+          "recall": 0.99771,
+          "recall_ids": 0.99764,
+          "qps": 7018.7,
+          "query_time_s": 1.425,
+          "peak_rss_mb": 688.9
+        },
+        {
+          "ef_search": 160,
+          "recall": 0.99978,
+          "recall_ids": 0.99971,
+          "qps": 4246.4,
+          "query_time_s": 2.355,
+          "peak_rss_mb": 688.9
+        },
+        {
+          "ef_search": 320,
+          "recall": 0.99996,
+          "recall_ids": 0.99989,
+          "qps": 2419.7,
+          "query_time_s": 4.133,
+          "peak_rss_mb": 688.9
+        },
+        {
+          "ef_search": 640,
+          "recall": 1.0,
+          "recall_ids": 0.99993,
+          "qps": 1385.0,
+          "query_time_s": 7.22,
+          "peak_rss_mb": 688.9
+        }
+      ]
+    }
+  ],
+  "noise_band": [
+    {
+      "ef_search": 10,
+      "recall_min": 0.85695,
+      "recall_max": 0.85828,
+      "recall_mean": 0.857615,
+      "recall_std": 0.00094,
+      "spread": 0.00133,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 20,
+      "recall_min": 0.94464,
+      "recall_max": 0.94468,
+      "recall_mean": 0.94466,
+      "recall_std": 2.8e-05,
+      "spread": 4e-05,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 40,
+      "recall_min": 0.98542,
+      "recall_max": 0.98558,
+      "recall_mean": 0.9855,
+      "recall_std": 0.000113,
+      "spread": 0.00016,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 80,
+      "recall_min": 0.99771,
+      "recall_max": 0.99774,
+      "recall_mean": 0.997725,
+      "recall_std": 2.1e-05,
+      "spread": 3e-05,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 160,
+      "recall_min": 0.99978,
+      "recall_max": 0.99978,
+      "recall_mean": 0.99978,
+      "recall_std": 0.0,
+      "spread": 0.0,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 320,
+      "recall_min": 0.99995,
+      "recall_max": 0.99996,
+      "recall_mean": 0.999955,
+      "recall_std": 7e-06,
+      "spread": 1e-05,
+      "tolerance": 0.005
+    },
+    {
+      "ef_search": 640,
+      "recall_min": 0.99999,
+      "recall_max": 1.0,
+      "recall_mean": 0.999995,
+      "recall_std": 7e-06,
+      "spread": 1e-05,
+      "tolerance": 0.005
+    }
+  ]
+}
