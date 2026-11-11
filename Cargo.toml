@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"
+description = "HNSW approximate nearest neighbor search with Python bindings"
+repository = "https://github.com/undo-git-pull/nmslib-rs"
+readme = "README.md"
 
 [lib]
 name = "nmslib_rs"

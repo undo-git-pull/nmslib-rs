@@ -1,0 +1,115 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # Manual runs build and test every wheel without publishing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    name: check-version
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tag matches Cargo.toml version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+
+  wheels:
+    name: wheels (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: auto }
+          - { name: linux-aarch64, runner: ubuntu-24.04-arm, target: aarch64, manylinux: auto }
+          - { name: macos-x86_64, runner: macos-15-intel, target: x86_64 }
+          - { name: macos-aarch64, runner: macos-latest, target: aarch64 }
+          - { name: windows-x64, runner: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v6
+
+      # --find-interpreter builds one wheel per Python it finds. The manylinux
+      # container ships its own interpreters; macOS and Windows use these.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: |
+            3.12
+            3.13
+            3.14
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          manylinux: ${{ matrix.platform.manylinux }}
+          args: --release --out dist --find-interpreter
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Test wheel
+        shell: bash
+        run: |
+          set -e
+          uv venv --python 3.12 .venv-test
+          if [ -d .venv-test/Scripts ]; then source .venv-test/Scripts/activate; else source .venv-test/bin/activate; fi
+          uv pip install nmslib-rs --no-index --no-deps --find-links dist
+          uv pip install numpy pytest
+          pytest tests
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-${{ matrix.platform.name }}
+          path: dist
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-sdist
+          path: dist
+
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    needs: [check-version, wheels, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

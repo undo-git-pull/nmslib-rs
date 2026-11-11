@@ -138,6 +138,8 @@ Recall depends on insertion order, so the baseline script builds NMSLIB several 
 
 `bench/mmap_pss.py` measures the memory of several processes sharing one mapped index. It reads `/proc`, so it runs on Linux only.
 
+CI runs the Rust and Python tests on Ubuntu and macOS for every push. [RELEASING.md](RELEASING.md) describes how wheels are built and published to PyPI.
+
 ## Benchmark
 
 SIFT1M (1,000,000 vectors, 128 dimensions, L2), `M=16`, `ef_construction=200`, `post=2`, 10,000 queries on one thread, recall@10 averaged over several builds. Measured on an AMD Threadripper 7970X against NMSLIB 2.1.2 compiled with `-march=native`:

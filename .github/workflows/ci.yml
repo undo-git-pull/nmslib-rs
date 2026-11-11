@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # .cargo/config.toml points PyO3 at .venv/bin/python, so the venv
+      # has to live at that path for cargo test to link.
+      - name: Create virtual environment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip maturin numpy pytest
+
+      - name: Rust tests
+        run: cargo test
+
+      - name: Build and install extension
+        run: |
+          source .venv/bin/activate
+          maturin develop --release
+
+      - name: Python tests
+        run: .venv/bin/pytest tests
