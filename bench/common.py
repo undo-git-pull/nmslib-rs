@@ -168,7 +168,7 @@ def noise_band(builds: list[dict]) -> list[dict]:
 
 
 def parity(reference: dict, builds: list[dict]) -> list[dict]:
-    """PLAN.md parity rule: every build's recall is within the reference
+    """Parity rule (README.md): every build's recall is within the reference
     (NMSLIB) tolerance of the reference mean, at each efSearch."""
     ref_band = {b["ef_search"]: b for b in reference["noise_band"]}
     rows = []

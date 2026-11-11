@@ -7,6 +7,8 @@ name = "nmslib-rs"
 version = "0.1.0"
 description = "HNSW approximate nearest neighbor search in Rust"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = ["numpy>=2"]
 
 [project.optional-dependencies]

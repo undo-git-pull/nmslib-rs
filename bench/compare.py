@@ -3,7 +3,7 @@
     python bench/compare.py                 # 100k
     python bench/compare.py --size 1M
 
-Exits non-zero if any efSearch fails the parity rule (PLAN.md phase 2).
+Exits non-zero if any efSearch fails the parity rule (README.md, "Tests and benchmarks").
 """
 
 from __future__ import annotations

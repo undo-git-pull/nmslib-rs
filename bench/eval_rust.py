@@ -2,7 +2,7 @@
 
 Exports the SIFT prefix as raw f32, runs examples/eval_sift.rs for several
 insertion orders, scores recall with common.recall (the same metric as the
-baseline) and applies the parity rule from PLAN.md phase 2.
+baseline) and applies the parity rule described in README.md.
 
     python bench/eval_rust.py --n 100000 --builds 3
 """
