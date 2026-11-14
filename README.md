@@ -59,7 +59,7 @@ Creates an empty index.
 - `M`: neighbors selected per node on insert, at least 2. Upper-level lists hold up to `M` neighbors and level-0 lists up to `2 * M`.
 - `ef_construction`: beam width during insert, positive.
 - `seed`: seeds the random level assignment. A sequential build (`num_threads=1`) with the same seed and the same input produces the same graph.
-- `post`: when true, the first `add_items` call runs a second build in reverse insertion order and merges its level-0 lists into the first, as NMSLIB does with `post=2`. This raises recall at a given `ef` and adds a second build's worth of time. It applies only to the first `add_items` call.
+- `post`: when true, the first `add_items` call runs a second build in reverse insertion order and merges its level-0 lists into the first, as NMSLIB does with `post=2`. This raises recall at a given `ef` and adds a second build's worth of time. It applies only to the first `add_items` call. Without it, overflow pruning leaves many level-0 lists well short of `2 * M`, and early-inserted nodes keep neighbors chosen when the graph was small; the merge refills the lists from both builds. Fuller lists make each query step slower at a given `ef`, but `post=True` usually reaches a given recall faster: on SIFT1M with `M=32` and `ef_construction=40`, it took 0.0050 ms per query to reach R@1 0.95 against 0.0059 ms without it, and only `post=True` reached 0.99 (details in [bench/results/faiss-benchmark.md](https://github.com/undo-git-pull/nmslib-rs/blob/main/bench/results/faiss-benchmark.md)). Turning it off can pay when build time matters more than recall, such as for indexes rebuilt often or searched only at low recall.
 
 Invalid arguments raise `ValueError`.
 
