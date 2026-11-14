@@ -1,0 +1,333 @@
+{
+  "dataset": "sift-128-euclidean",
+  "n_base": 1000000,
+  "n_queries": 10000,
+  "k": 10,
+  "recall_metric": "R@1 by id, as bench_hnsw.py; also distance-based R@1 and recall@10",
+  "timing": "queries and results in host memory, fastest of 3 after warm-up",
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+  "versions": {
+    "faiss": "1.16.0",
+    "nmslib_rs": "0.2.0"
+  },
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "72b8a75",
+    "date": "2026-11-14T13:33:52+0000"
+  },
+  "gpu_flat": {
+    "add_s": 0.02,
+    "r_at_1": 0.9928,
+    "r_at_1_dist": 1.0,
+    "recall_at_10": 1.0,
+    "ms_per_query": 0.00833,
+    "qps": 120022.3
+  },
+  "gpu_ivf": {
+    "nlist": 4096,
+    "train_n": 200000,
+    "train_s": 0.22,
+    "add_s": 0.45,
+    "sweep": [
+      {
+        "nprobe": 1,
+        "r_at_1": 0.3452,
+        "r_at_1_dist": 0.3468,
+        "recall_at_10": 0.27664,
+        "ms_per_query": 0.00015,
+        "qps": 6769045.2
+      },
+      {
+        "nprobe": 4,
+        "r_at_1": 0.6419,
+        "r_at_1_dist": 0.6467,
+        "recall_at_10": 0.56337,
+        "ms_per_query": 0.00034,
+        "qps": 2973559.2
+      },
+      {
+        "nprobe": 16,
+        "r_at_1": 0.8829,
+        "r_at_1_dist": 0.8891,
+        "recall_at_10": 0.83359,
+        "ms_per_query": 0.00102,
+        "qps": 985002.9
+      },
+      {
+        "nprobe": 32,
+        "r_at_1": 0.9469,
+        "r_at_1_dist": 0.9538,
+        "recall_at_10": 0.92238,
+        "ms_per_query": 0.00189,
+        "qps": 528078.1
+      },
+      {
+        "nprobe": 64,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97181,
+        "ms_per_query": 0.00362,
+        "qps": 276050.0
+      },
+      {
+        "nprobe": 128,
+        "r_at_1": 0.9899,
+        "r_at_1_dist": 0.9972,
+        "recall_at_10": 0.99276,
+        "ms_per_query": 0.00713,
+        "qps": 140296.8
+      },
+      {
+        "nprobe": 256,
+        "r_at_1": 0.9923,
+        "r_at_1_dist": 0.9996,
+        "recall_at_10": 0.99894,
+        "ms_per_query": 0.01433,
+        "qps": 69767.4
+      },
+      {
+        "nprobe": 512,
+        "r_at_1": 0.9927,
+        "r_at_1_dist": 1.0,
+        "recall_at_10": 0.99993,
+        "ms_per_query": 0.02971,
+        "qps": 33661.2
+      }
+    ]
+  },
+  "cpu_results_from": "/home/raylee/dev/nmslib-rs/bench/results/faiss_wiki_1M.json",
+  "matched_recall": [
+    {
+      "r_at_1_target": 0.9,
+      "faiss_gpu_ivf4096": {
+        "nprobe": 32,
+        "r_at_1": 0.9469,
+        "r_at_1_dist": 0.9538,
+        "recall_at_10": 0.92238,
+        "ms_per_query": 0.00189,
+        "qps": 528078.1
+      },
+      "faiss_cpu20": {
+        "ef_search": 16,
+        "r_at_1": 0.9029,
+        "recall_at_10": 0.8614,
+        "ms_per_query": 0.00441,
+        "qps": 226545.9
+      },
+      "nmslib_rs_cpu20": {
+        "ef_search": 32,
+        "r_at_1": 0.9026,
+        "recall_at_10": 0.8641,
+        "ms_per_query": 0.00351,
+        "qps": 284763.4
+      },
+      "nmslib_rs_post_cpu20": {
+        "ef_search": 32,
+        "r_at_1": 0.9539,
+        "recall_at_10": 0.9347,
+        "ms_per_query": 0.00501,
+        "qps": 199605.0
+      }
+    },
+    {
+      "r_at_1_target": 0.95,
+      "faiss_gpu_ivf4096": {
+        "nprobe": 64,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97181,
+        "ms_per_query": 0.00362,
+        "qps": 276050.0
+      },
+      "faiss_cpu20": {
+        "ef_search": 32,
+        "r_at_1": 0.9543,
+        "recall_at_10": 0.9365,
+        "ms_per_query": 0.00762,
+        "qps": 131242.9
+      },
+      "nmslib_rs_cpu20": {
+        "ef_search": 64,
+        "r_at_1": 0.9507,
+        "recall_at_10": 0.9349,
+        "ms_per_query": 0.00586,
+        "qps": 170561.1
+      },
+      "nmslib_rs_post_cpu20": {
+        "ef_search": 32,
+        "r_at_1": 0.9539,
+        "recall_at_10": 0.9347,
+        "ms_per_query": 0.00501,
+        "qps": 199605.0
+      }
+    },
+    {
+      "r_at_1_target": 0.98,
+      "faiss_gpu_ivf4096": {
+        "nprobe": 128,
+        "r_at_1": 0.9899,
+        "r_at_1_dist": 0.9972,
+        "recall_at_10": 0.99276,
+        "ms_per_query": 0.00713,
+        "qps": 140296.8
+      },
+      "faiss_cpu20": {
+        "ef_search": 128,
+        "r_at_1": 0.9887,
+        "recall_at_10": 0.9931,
+        "ms_per_query": 0.02447,
+        "qps": 40871.9
+      },
+      "nmslib_rs_cpu20": {
+        "ef_search": 256,
+        "r_at_1": 0.9874,
+        "recall_at_10": 0.9908,
+        "ms_per_query": 0.01804,
+        "qps": 55431.1
+      },
+      "nmslib_rs_post_cpu20": {
+        "ef_search": 128,
+        "r_at_1": 0.9891,
+        "recall_at_10": 0.9929,
+        "ms_per_query": 0.01484,
+        "qps": 67404.1
+      }
+    },
+    {
+      "r_at_1_target": 0.99,
+      "faiss_gpu_ivf4096": {
+        "nprobe": 256,
+        "r_at_1": 0.9923,
+        "r_at_1_dist": 0.9996,
+        "recall_at_10": 0.99894,
+        "ms_per_query": 0.01433,
+        "qps": 69767.4
+      },
+      "faiss_cpu20": {
+        "ef_search": 256,
+        "r_at_1": 0.9915,
+        "recall_at_10": 0.9984,
+        "ms_per_query": 0.04405,
+        "qps": 22703.9
+      },
+      "nmslib_rs_cpu20": null,
+      "nmslib_rs_post_cpu20": {
+        "ef_search": 256,
+        "r_at_1": 0.9919,
+        "recall_at_10": 0.9984,
+        "ms_per_query": 0.02579,
+        "qps": 38779.3
+      }
+    }
+  ],
+  "batch_sweep": {
+    "gpu_ivf_nprobe": 64,
+    "nmslib_rs_ef": 64,
+    "nmslib_rs_threads": 20,
+    "points": [
+      {
+        "library": "faiss_gpu_ivf",
+        "batch": 1,
+        "n_queries": 1000,
+        "r_at_1": 0.982,
+        "r_at_1_dist": 0.987,
+        "recall_at_10": 0.9672,
+        "ms_per_query": 0.13724,
+        "qps": 7286.7
+      },
+      {
+        "library": "nmslib_rs_post",
+        "batch": 1,
+        "n_queries": 1000,
+        "r_at_1": 0.978,
+        "r_at_1_dist": 0.983,
+        "recall_at_10": 0.9711,
+        "ms_per_query": 0.11706,
+        "qps": 8542.3
+      },
+      {
+        "library": "faiss_gpu_ivf",
+        "batch": 10,
+        "n_queries": 1000,
+        "r_at_1": 0.982,
+        "r_at_1_dist": 0.987,
+        "recall_at_10": 0.9672,
+        "ms_per_query": 0.01971,
+        "qps": 50745.9
+      },
+      {
+        "library": "nmslib_rs_post",
+        "batch": 10,
+        "n_queries": 1000,
+        "r_at_1": 0.978,
+        "r_at_1_dist": 0.983,
+        "recall_at_10": 0.9711,
+        "ms_per_query": 0.02961,
+        "qps": 33766.7
+      },
+      {
+        "library": "faiss_gpu_ivf",
+        "batch": 100,
+        "n_queries": 10000,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97181,
+        "ms_per_query": 0.0053,
+        "qps": 188730.6
+      },
+      {
+        "library": "nmslib_rs_post",
+        "batch": 100,
+        "n_queries": 10000,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97437,
+        "ms_per_query": 0.01345,
+        "qps": 74365.7
+      },
+      {
+        "library": "faiss_gpu_ivf",
+        "batch": 1000,
+        "n_queries": 10000,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97181,
+        "ms_per_query": 0.00378,
+        "qps": 264522.1
+      },
+      {
+        "library": "nmslib_rs_post",
+        "batch": 1000,
+        "n_queries": 10000,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97437,
+        "ms_per_query": 0.00859,
+        "qps": 116455.2
+      },
+      {
+        "library": "faiss_gpu_ivf",
+        "batch": 10000,
+        "n_queries": 10000,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97181,
+        "ms_per_query": 0.00363,
+        "qps": 275762.1
+      },
+      {
+        "library": "nmslib_rs_post",
+        "batch": 10000,
+        "n_queries": 10000,
+        "r_at_1": 0.9772,
+        "r_at_1_dist": 0.9845,
+        "recall_at_10": 0.97437,
+        "ms_per_query": 0.0082,
+        "qps": 121943.5
+      }
+    ]
+  }
+}

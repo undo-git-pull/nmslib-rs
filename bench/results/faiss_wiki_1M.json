@@ -1,0 +1,856 @@
+{
+  "benchmark": "FAISS wiki 'Indexing 1M vectors', HNSW Flat (benchs/bench_hnsw.py)",
+  "dataset": "sift-128-euclidean",
+  "n_base": 1000000,
+  "n_queries": 10000,
+  "k": 10,
+  "recall_metric": "R@1 by id, as bench_hnsw.py; also distance-based R@1 and recall@10",
+  "params": {
+    "M": 32,
+    "efConstruction": 40,
+    "threads": 20,
+    "timing": "one batch of all queries, fastest of 3"
+  },
+  "versions": {
+    "faiss": "1.16.0",
+    "faiss_compile": "OPTIMIZE DD AVX2 AVX512 AVX512_VPOPCNT ",
+    "nmslib_rs": "0.2.0",
+    "nmslib_rs_simd": "AVX-512"
+  },
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 7970X 32-Cores",
+    "cpu_count": 64,
+    "python": "3.12.11",
+    "numpy": "2.5.4",
+    "git_commit": "72b8a75",
+    "date": "2026-11-14T13:28:55+0000"
+  },
+  "wiki_reference": {
+    "16": {
+      "ms_per_query": 0.011,
+      "r_at_1": 0.874
+    },
+    "32": {
+      "ms_per_query": 0.02,
+      "r_at_1": 0.9492
+    },
+    "64": {
+      "ms_per_query": 0.033,
+      "r_at_1": 0.9779
+    },
+    "128": {
+      "ms_per_query": 0.059,
+      "r_at_1": 0.9887
+    },
+    "256": {
+      "ms_per_query": 0.104,
+      "r_at_1": 0.992
+    }
+  },
+  "results": {
+    "faiss": {
+      "label": "faiss IndexHNSWFlat",
+      "builds": [
+        {
+          "insertion_order_seed": 1,
+          "build_time_s": 9.5,
+          "index_mb": 800.4,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.9011,
+              "r_at_1_dist": 0.9079,
+              "recall_at_10": 0.8607,
+              "ms_per_query": 0.00441,
+              "qps": 226513.4,
+              "query_times_s": [
+                0.0443,
+                0.0441,
+                0.046
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9522,
+              "r_at_1_dist": 0.9592,
+              "recall_at_10": 0.93545,
+              "ms_per_query": 0.00762,
+              "qps": 131242.9,
+              "query_times_s": [
+                0.0778,
+                0.0762,
+                0.0765
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9783,
+              "r_at_1_dist": 0.9855,
+              "recall_at_10": 0.97689,
+              "ms_per_query": 0.01286,
+              "qps": 77790.6,
+              "query_times_s": [
+                0.1346,
+                0.1349,
+                0.1286
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9884,
+              "r_at_1_dist": 0.9957,
+              "recall_at_10": 0.99304,
+              "ms_per_query": 0.02443,
+              "qps": 40930.1,
+              "query_times_s": [
+                0.2448,
+                0.2444,
+                0.2443
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9913,
+              "r_at_1_dist": 0.9986,
+              "recall_at_10": 0.99853,
+              "ms_per_query": 0.04405,
+              "qps": 22703.9,
+              "query_times_s": [
+                0.4443,
+                0.4405,
+                0.4428
+              ]
+            }
+          ]
+        },
+        {
+          "insertion_order_seed": 2,
+          "build_time_s": 9.62,
+          "index_mb": 800.4,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.9049,
+              "r_at_1_dist": 0.9114,
+              "recall_at_10": 0.86268,
+              "ms_per_query": 0.00441,
+              "qps": 226545.9,
+              "query_times_s": [
+                0.0441,
+                0.0459,
+                0.0459
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9573,
+              "r_at_1_dist": 0.9642,
+              "recall_at_10": 0.93753,
+              "ms_per_query": 0.00733,
+              "qps": 136394.3,
+              "query_times_s": [
+                0.0735,
+                0.0733,
+                0.0734
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9803,
+              "r_at_1_dist": 0.9873,
+              "recall_at_10": 0.97676,
+              "ms_per_query": 0.01346,
+              "qps": 74289.3,
+              "query_times_s": [
+                0.1346,
+                0.1347,
+                0.1346
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9883,
+              "r_at_1_dist": 0.9955,
+              "recall_at_10": 0.99303,
+              "ms_per_query": 0.02447,
+              "qps": 40871.9,
+              "query_times_s": [
+                0.2453,
+                0.247,
+                0.2447
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9919,
+              "r_at_1_dist": 0.9991,
+              "recall_at_10": 0.99823,
+              "ms_per_query": 0.04417,
+              "qps": 22641.6,
+              "query_times_s": [
+                0.4427,
+                0.4417,
+                0.4418
+              ]
+            }
+          ]
+        },
+        {
+          "insertion_order_seed": 3,
+          "build_time_s": 9.39,
+          "index_mb": 800.5,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.9028,
+              "r_at_1_dist": 0.9095,
+              "recall_at_10": 0.8607,
+              "ms_per_query": 0.0044,
+              "qps": 227135.5,
+              "query_times_s": [
+                0.044,
+                0.0457,
+                0.0459
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9534,
+              "r_at_1_dist": 0.9606,
+              "recall_at_10": 0.93645,
+              "ms_per_query": 0.00762,
+              "qps": 131194.8,
+              "query_times_s": [
+                0.0762,
+                0.0765,
+                0.0764
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9778,
+              "r_at_1_dist": 0.9853,
+              "recall_at_10": 0.97676,
+              "ms_per_query": 0.01296,
+              "qps": 77137.4,
+              "query_times_s": [
+                0.1343,
+                0.1353,
+                0.1296
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9893,
+              "r_at_1_dist": 0.997,
+              "recall_at_10": 0.99311,
+              "ms_per_query": 0.02456,
+              "qps": 40717.2,
+              "query_times_s": [
+                0.2478,
+                0.2465,
+                0.2456
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9913,
+              "r_at_1_dist": 0.999,
+              "recall_at_10": 0.9984,
+              "ms_per_query": 0.04404,
+              "qps": 22708.3,
+              "query_times_s": [
+                0.4404,
+                0.4418,
+                0.4421
+              ]
+            }
+          ]
+        }
+      ],
+      "summary": [
+        {
+          "ef_search": 16,
+          "r_at_1_mean": 0.9029,
+          "r_at_1_min": 0.9011,
+          "r_at_1_max": 0.9049,
+          "recall_at_10_mean": 0.8614,
+          "ms_per_query_median": 0.00441,
+          "qps_median": 226545.9
+        },
+        {
+          "ef_search": 32,
+          "r_at_1_mean": 0.9543,
+          "r_at_1_min": 0.9522,
+          "r_at_1_max": 0.9573,
+          "recall_at_10_mean": 0.9365,
+          "ms_per_query_median": 0.00762,
+          "qps_median": 131242.9
+        },
+        {
+          "ef_search": 64,
+          "r_at_1_mean": 0.9788,
+          "r_at_1_min": 0.9778,
+          "r_at_1_max": 0.9803,
+          "recall_at_10_mean": 0.9768,
+          "ms_per_query_median": 0.01296,
+          "qps_median": 77137.4
+        },
+        {
+          "ef_search": 128,
+          "r_at_1_mean": 0.9887,
+          "r_at_1_min": 0.9883,
+          "r_at_1_max": 0.9893,
+          "recall_at_10_mean": 0.9931,
+          "ms_per_query_median": 0.02447,
+          "qps_median": 40871.9
+        },
+        {
+          "ef_search": 256,
+          "r_at_1_mean": 0.9915,
+          "r_at_1_min": 0.9913,
+          "r_at_1_max": 0.9919,
+          "recall_at_10_mean": 0.9984,
+          "ms_per_query_median": 0.04405,
+          "qps_median": 22703.9
+        }
+      ]
+    },
+    "nmslib_rs": {
+      "label": "nmslib_rs, post=False",
+      "builds": [
+        {
+          "insertion_order_seed": 1,
+          "build_time_s": 5.07,
+          "index_mb": 826.5,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.8169,
+              "r_at_1_dist": 0.8232,
+              "recall_at_10": 0.7613,
+              "ms_per_query": 0.00259,
+              "qps": 385581.6,
+              "query_times_s": [
+                0.0297,
+                0.0285,
+                0.0259
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.901,
+              "r_at_1_dist": 0.9081,
+              "recall_at_10": 0.86394,
+              "ms_per_query": 0.00349,
+              "qps": 286587.3,
+              "query_times_s": [
+                0.0389,
+                0.038,
+                0.0349
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9495,
+              "r_at_1_dist": 0.9569,
+              "recall_at_10": 0.93472,
+              "ms_per_query": 0.00583,
+              "qps": 171384.7,
+              "query_times_s": [
+                0.0615,
+                0.0583,
+                0.0591
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9775,
+              "r_at_1_dist": 0.9849,
+              "recall_at_10": 0.97392,
+              "ms_per_query": 0.01069,
+              "qps": 93508.9,
+              "query_times_s": [
+                0.1072,
+                0.1069,
+                0.1103
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9878,
+              "r_at_1_dist": 0.9952,
+              "recall_at_10": 0.99136,
+              "ms_per_query": 0.01808,
+              "qps": 55297.3,
+              "query_times_s": [
+                0.2024,
+                0.1851,
+                0.1808
+              ]
+            }
+          ]
+        },
+        {
+          "insertion_order_seed": 2,
+          "build_time_s": 5.06,
+          "index_mb": 826.5,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.8183,
+              "r_at_1_dist": 0.8241,
+              "recall_at_10": 0.75978,
+              "ms_per_query": 0.00221,
+              "qps": 452078.3,
+              "query_times_s": [
+                0.0221,
+                0.0224,
+                0.0222
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9034,
+              "r_at_1_dist": 0.9099,
+              "recall_at_10": 0.86556,
+              "ms_per_query": 0.00351,
+              "qps": 284763.4,
+              "query_times_s": [
+                0.0368,
+                0.0369,
+                0.0351
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9506,
+              "r_at_1_dist": 0.9576,
+              "recall_at_10": 0.93514,
+              "ms_per_query": 0.00587,
+              "qps": 170368.8,
+              "query_times_s": [
+                0.062,
+                0.0587,
+                0.059
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9764,
+              "r_at_1_dist": 0.9836,
+              "recall_at_10": 0.97338,
+              "ms_per_query": 0.01072,
+              "qps": 93322.1,
+              "query_times_s": [
+                0.1178,
+                0.1072,
+                0.1098
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9872,
+              "r_at_1_dist": 0.9944,
+              "recall_at_10": 0.99069,
+              "ms_per_query": 0.01804,
+              "qps": 55431.1,
+              "query_times_s": [
+                0.1898,
+                0.1804,
+                0.181
+              ]
+            }
+          ]
+        },
+        {
+          "insertion_order_seed": 3,
+          "build_time_s": 5.07,
+          "index_mb": 826.4,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.82,
+              "r_at_1_dist": 0.826,
+              "recall_at_10": 0.75817,
+              "ms_per_query": 0.00219,
+              "qps": 456380.0,
+              "query_times_s": [
+                0.0222,
+                0.0224,
+                0.0219
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9033,
+              "r_at_1_dist": 0.91,
+              "recall_at_10": 0.86283,
+              "ms_per_query": 0.00363,
+              "qps": 275684.7,
+              "query_times_s": [
+                0.037,
+                0.0384,
+                0.0363
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9519,
+              "r_at_1_dist": 0.9593,
+              "recall_at_10": 0.93478,
+              "ms_per_query": 0.00586,
+              "qps": 170561.1,
+              "query_times_s": [
+                0.068,
+                0.0595,
+                0.0586
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9772,
+              "r_at_1_dist": 0.9849,
+              "recall_at_10": 0.97345,
+              "ms_per_query": 0.01065,
+              "qps": 93909.9,
+              "query_times_s": [
+                0.1075,
+                0.1072,
+                0.1065
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9873,
+              "r_at_1_dist": 0.995,
+              "recall_at_10": 0.99047,
+              "ms_per_query": 0.01787,
+              "qps": 55945.3,
+              "query_times_s": [
+                0.1901,
+                0.1826,
+                0.1787
+              ]
+            }
+          ]
+        }
+      ],
+      "summary": [
+        {
+          "ef_search": 16,
+          "r_at_1_mean": 0.8184,
+          "r_at_1_min": 0.8169,
+          "r_at_1_max": 0.82,
+          "recall_at_10_mean": 0.7598,
+          "ms_per_query_median": 0.00221,
+          "qps_median": 452078.3
+        },
+        {
+          "ef_search": 32,
+          "r_at_1_mean": 0.9026,
+          "r_at_1_min": 0.901,
+          "r_at_1_max": 0.9034,
+          "recall_at_10_mean": 0.8641,
+          "ms_per_query_median": 0.00351,
+          "qps_median": 284763.4
+        },
+        {
+          "ef_search": 64,
+          "r_at_1_mean": 0.9507,
+          "r_at_1_min": 0.9495,
+          "r_at_1_max": 0.9519,
+          "recall_at_10_mean": 0.9349,
+          "ms_per_query_median": 0.00586,
+          "qps_median": 170561.1
+        },
+        {
+          "ef_search": 128,
+          "r_at_1_mean": 0.977,
+          "r_at_1_min": 0.9764,
+          "r_at_1_max": 0.9775,
+          "recall_at_10_mean": 0.9736,
+          "ms_per_query_median": 0.01069,
+          "qps_median": 93508.9
+        },
+        {
+          "ef_search": 256,
+          "r_at_1_mean": 0.9874,
+          "r_at_1_min": 0.9872,
+          "r_at_1_max": 0.9878,
+          "recall_at_10_mean": 0.9908,
+          "ms_per_query_median": 0.01804,
+          "qps_median": 55431.1
+        }
+      ]
+    },
+    "nmslib_rs_post": {
+      "label": "nmslib_rs, post=True",
+      "builds": [
+        {
+          "insertion_order_seed": 1,
+          "build_time_s": 9.96,
+          "index_mb": 839.0,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.8979,
+              "r_at_1_dist": 0.9045,
+              "recall_at_10": 0.85838,
+              "ms_per_query": 0.00306,
+              "qps": 326786.6,
+              "query_times_s": [
+                0.0309,
+                0.0306,
+                0.0306
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9529,
+              "r_at_1_dist": 0.9598,
+              "recall_at_10": 0.93503,
+              "ms_per_query": 0.00502,
+              "qps": 199043.1,
+              "query_times_s": [
+                0.0505,
+                0.0502,
+                0.0502
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9801,
+              "r_at_1_dist": 0.9873,
+              "recall_at_10": 0.9769,
+              "ms_per_query": 0.00848,
+              "qps": 117974.4,
+              "query_times_s": [
+                0.0859,
+                0.0849,
+                0.0848
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9895,
+              "r_at_1_dist": 0.9968,
+              "recall_at_10": 0.99292,
+              "ms_per_query": 0.01484,
+              "qps": 67404.1,
+              "query_times_s": [
+                0.1493,
+                0.1484,
+                0.1528
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9918,
+              "r_at_1_dist": 0.9991,
+              "recall_at_10": 0.99836,
+              "ms_per_query": 0.02577,
+              "qps": 38803.0,
+              "query_times_s": [
+                0.2623,
+                0.2585,
+                0.2577
+              ]
+            }
+          ]
+        },
+        {
+          "insertion_order_seed": 2,
+          "build_time_s": 9.93,
+          "index_mb": 838.9,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.8988,
+              "r_at_1_dist": 0.905,
+              "recall_at_10": 0.85666,
+              "ms_per_query": 0.00307,
+              "qps": 325810.1,
+              "query_times_s": [
+                0.0309,
+                0.0308,
+                0.0307
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9541,
+              "r_at_1_dist": 0.961,
+              "recall_at_10": 0.9342,
+              "ms_per_query": 0.00499,
+              "qps": 200565.5,
+              "query_times_s": [
+                0.0506,
+                0.0514,
+                0.0499
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9783,
+              "r_at_1_dist": 0.9854,
+              "recall_at_10": 0.97608,
+              "ms_per_query": 0.00849,
+              "qps": 117809.2,
+              "query_times_s": [
+                0.0859,
+                0.0856,
+                0.0849
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.9887,
+              "r_at_1_dist": 0.9959,
+              "recall_at_10": 0.99248,
+              "ms_per_query": 0.01476,
+              "qps": 67736.8,
+              "query_times_s": [
+                0.1485,
+                0.1483,
+                0.1476
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9922,
+              "r_at_1_dist": 0.9994,
+              "recall_at_10": 0.99833,
+              "ms_per_query": 0.02579,
+              "qps": 38779.3,
+              "query_times_s": [
+                0.2624,
+                0.2579,
+                0.2587
+              ]
+            }
+          ]
+        },
+        {
+          "insertion_order_seed": 3,
+          "build_time_s": 10.01,
+          "index_mb": 838.7,
+          "sweep": [
+            {
+              "ef_search": 16,
+              "r_at_1": 0.8995,
+              "r_at_1_dist": 0.9061,
+              "recall_at_10": 0.85845,
+              "ms_per_query": 0.00307,
+              "qps": 326151.4,
+              "query_times_s": [
+                0.031,
+                0.0308,
+                0.0307
+              ]
+            },
+            {
+              "ef_search": 32,
+              "r_at_1": 0.9547,
+              "r_at_1_dist": 0.9617,
+              "recall_at_10": 0.93501,
+              "ms_per_query": 0.00501,
+              "qps": 199605.0,
+              "query_times_s": [
+                0.0506,
+                0.0504,
+                0.0501
+              ]
+            },
+            {
+              "ef_search": 64,
+              "r_at_1": 0.9792,
+              "r_at_1_dist": 0.9867,
+              "recall_at_10": 0.97665,
+              "ms_per_query": 0.00854,
+              "qps": 117081.1,
+              "query_times_s": [
+                0.0871,
+                0.0858,
+                0.0854
+              ]
+            },
+            {
+              "ef_search": 128,
+              "r_at_1": 0.989,
+              "r_at_1_dist": 0.9967,
+              "recall_at_10": 0.99319,
+              "ms_per_query": 0.01492,
+              "qps": 67019.1,
+              "query_times_s": [
+                0.1557,
+                0.1504,
+                0.1492
+              ]
+            },
+            {
+              "ef_search": 256,
+              "r_at_1": 0.9918,
+              "r_at_1_dist": 0.9995,
+              "recall_at_10": 0.99853,
+              "ms_per_query": 0.02641,
+              "qps": 37867.4,
+              "query_times_s": [
+                0.28,
+                0.2641,
+                0.2663
+              ]
+            }
+          ]
+        }
+      ],
+      "summary": [
+        {
+          "ef_search": 16,
+          "r_at_1_mean": 0.8987,
+          "r_at_1_min": 0.8979,
+          "r_at_1_max": 0.8995,
+          "recall_at_10_mean": 0.8578,
+          "ms_per_query_median": 0.00307,
+          "qps_median": 326151.4
+        },
+        {
+          "ef_search": 32,
+          "r_at_1_mean": 0.9539,
+          "r_at_1_min": 0.9529,
+          "r_at_1_max": 0.9547,
+          "recall_at_10_mean": 0.9347,
+          "ms_per_query_median": 0.00501,
+          "qps_median": 199605.0
+        },
+        {
+          "ef_search": 64,
+          "r_at_1_mean": 0.9792,
+          "r_at_1_min": 0.9783,
+          "r_at_1_max": 0.9801,
+          "recall_at_10_mean": 0.9765,
+          "ms_per_query_median": 0.00849,
+          "qps_median": 117809.2
+        },
+        {
+          "ef_search": 128,
+          "r_at_1_mean": 0.9891,
+          "r_at_1_min": 0.9887,
+          "r_at_1_max": 0.9895,
+          "recall_at_10_mean": 0.9929,
+          "ms_per_query_median": 0.01484,
+          "qps_median": 67404.1
+        },
+        {
+          "ef_search": 256,
+          "r_at_1_mean": 0.9919,
+          "r_at_1_min": 0.9918,
+          "r_at_1_max": 0.9922,
+          "recall_at_10_mean": 0.9984,
+          "ms_per_query_median": 0.02579,
+          "qps_median": 38779.3
+        }
+      ]
+    }
+  }
+}
