@@ -6,6 +6,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use super::*;
+use crate::bitset::Bitset;
 use crate::hnsw::{Hnsw, Params};
 
 fn temp_file(name: &str) -> PathBuf {
@@ -45,10 +46,23 @@ fn assert_same_results(a: &Hnsw, b: &Hnsw) {
     let (sa, sb) = (a.stats(), b.stats());
     assert_eq!(sa.nodes_per_level, sb.nodes_per_level);
     assert_eq!(sa.mean_degree, sb.mean_degree);
+    assert_eq!(a.graph_stats(), b.graph_stats());
     let queries = random_data(200, a.dim(), 99);
     for ef in [10, 50, 200] {
         for q in queries.chunks_exact(a.dim()) {
             assert_eq!(a.knn_query(q, 10, ef), b.knn_query(q, 10, ef), "ef {ef}");
+        }
+    }
+    let mut rng = StdRng::seed_from_u64(98);
+    let bits: Vec<bool> = (0..a.len()).map(|_| rng.random::<f64>() < 0.1).collect();
+    let filter = Bitset::from_bools(&bits);
+    for (ef, cap) in [(10, 0), (50, 0), (50, 100)] {
+        for q in queries.chunks_exact(a.dim()) {
+            assert_eq!(
+                a.knn_query_filtered(q, 10, ef, Some(&filter), cap),
+                b.knn_query_filtered(q, 10, ef, Some(&filter), cap),
+                "filtered, ef {ef}, cap {cap}"
+            );
         }
     }
 }

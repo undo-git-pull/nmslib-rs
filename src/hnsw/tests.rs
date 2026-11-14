@@ -157,17 +157,7 @@ fn check_invariants_allowing(index: &Hnsw, max_unreachable: f64) {
         }
     }
     // Every node is reachable from the entry point at level 0.
-    let mut seen = vec![false; n as usize];
-    let mut queue = VecDeque::from([entry]);
-    seen[entry as usize] = true;
-    while let Some(id) = queue.pop_front() {
-        for nb in g.neighbors(id, 0) {
-            if !std::mem::replace(&mut seen[nb as usize], true) {
-                queue.push_back(nb);
-            }
-        }
-    }
-    let unreached = seen.iter().filter(|s| !**s).count();
+    let unreached = index.graph_stats().unreachable;
     assert!(
         unreached as f64 <= max_unreachable * n as f64,
         "{unreached} of {n} nodes unreachable at level 0"
@@ -453,4 +443,217 @@ fn frozen_level0_starts_on_a_cache_line() {
     let v = f.view();
     assert_eq!(v.vector(0).as_ptr() as usize % 64, 0);
     assert_eq!(v.vector(999).as_ptr() as usize % 64, 0);
+}
+
+#[test]
+fn graph_stats_finds_an_isolated_node() {
+    // The path 0-1-2-3-4 plus node 5, which nothing links to.
+    let store = store_1d(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+    let mut g = Graph::new(2, 4);
+    g.grow(&[0; 6]);
+    for id in 0..4u32 {
+        g.push_neighbor(id, 0, id + 1);
+        g.push_neighbor(id + 1, 0, id);
+    }
+    g.set_entry(0, 0);
+    let h = health_of(&BuildView {
+        store: &store,
+        graph: &g,
+    });
+    assert_eq!(
+        (
+            h.nodes,
+            h.reached,
+            h.unreachable,
+            h.one_way_links,
+            h.min_degree
+        ),
+        (6, 5, 1, 0, 0)
+    );
+    assert!((h.mean_degree - 8.0 / 6.0).abs() < 1e-12);
+    // A link out of 5 does not make it reachable, and has no reverse link.
+    g.push_neighbor(5, 0, 4);
+    let h = health_of(&BuildView {
+        store: &store,
+        graph: &g,
+    });
+    assert_eq!(
+        (h.reached, h.unreachable, h.one_way_links, h.min_degree),
+        (5, 1, 1, 1)
+    );
+}
+
+#[test]
+fn diagnostics_on_empty_index() {
+    let index = Hnsw::new(4, Space::L2, Params::default());
+    let h = index.graph_stats();
+    assert_eq!(
+        (h.nodes, h.reached, h.unreachable, h.min_degree),
+        (0, 0, 0, 0)
+    );
+    assert_eq!(
+        index.self_recall(10, 1),
+        SelfRecall {
+            nodes: 0,
+            top1: 0,
+            missing: 0
+        }
+    );
+}
+
+#[test]
+fn every_node_reachable_after_several_adds() {
+    // Sequential, so the result does not depend on thread timing; parallel
+    // adds without post can strand a few nodes (diag_unreachable_by_threads).
+    let dim = 16;
+    let data = random_data(10_000, dim, 23);
+    let mut index = Hnsw::new(
+        dim,
+        Space::L2,
+        Params {
+            ef_construction: 100,
+            ..Params::default()
+        },
+    );
+    for chunk in data.chunks(2_500 * dim) {
+        index.add(chunk, 1);
+    }
+    let h = index.graph_stats();
+    assert_eq!((h.nodes, h.reached, h.unreachable), (10_000, 10_000, 0));
+}
+
+#[test]
+fn self_recall_on_random_data() {
+    // Measured at ef 64: 10000 of 10000 first for the sequential post build,
+    // 9998 (2 missing) for a parallel build without post.
+    for (threads, post) in [(1, true), (8, false)] {
+        let (_, index) = build_threads(10_000, 16, post, threads);
+        let r = index.self_recall(64, 0);
+        assert_eq!(r.nodes, 10_000);
+        assert!(r.top1 >= 9_990 && r.missing <= 10, "{r:?}");
+        assert_eq!(index.self_recall(64, 1), r);
+    }
+}
+
+#[test]
+fn self_recall_counts_a_duplicate_as_found() {
+    // Every vector twice: a node often loses first place to its twin, which
+    // has the same distance and a lower or higher id.
+    let base = random_data(500, 8, 24);
+    let data: Vec<f32> = base.iter().chain(&base).copied().collect();
+    let mut index = Hnsw::new(8, Space::L2, Params::default());
+    index.add(&data, 1);
+    let r = index.self_recall(32, 1);
+    assert_eq!((r.nodes, r.top1, r.missing), (1_000, 1_000, 0));
+}
+
+fn random_mask(n: usize, fraction: f64, seed: u64) -> Bitset {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let bits: Vec<bool> = (0..n).map(|_| rng.random::<f64>() < fraction).collect();
+    Bitset::from_bools(&bits)
+}
+
+#[test]
+fn all_true_filter_matches_unfiltered_search() {
+    let dim = 16;
+    let (_, index) = build_threads(5_000, dim, true, 8);
+    let all = Bitset::from_bools(&[true; 5_000]);
+    let queries = random_data(200, dim, 62);
+    for ef in [10, 50, 200] {
+        for q in queries.chunks_exact(dim) {
+            assert_eq!(
+                index.knn_query_filtered(q, 10, ef, Some(&all), 0),
+                index.knn_query(q, 10, ef),
+                "ef {ef}"
+            );
+        }
+    }
+}
+
+#[test]
+fn all_false_filter_returns_nothing() {
+    let dim = 16;
+    let (_, index) = build_threads(2_000, dim, true, 4);
+    let none = Bitset::new(2_000);
+    let queries = random_data(20, dim, 63);
+    let (mut labels, mut dists) = (vec![0i64; 20 * 5], vec![0f32; 20 * 5]);
+    for cap in [0, 50] {
+        index.knn_query_batch_filtered(
+            &queries,
+            5,
+            20,
+            Some(&none),
+            cap,
+            2,
+            &mut labels,
+            &mut dists,
+        );
+        assert!(labels.iter().all(|&l| l == -1));
+        assert!(dists.iter().all(|d| d.is_infinite()));
+    }
+}
+
+#[test]
+fn filtered_recall_against_brute_force() {
+    // Measured at ef 50 on this index, 500 queries: recall@10 1.0 at 50%,
+    // 10% and 1% of labels passing (0.9556 / 0.9974 / 1.0 at ef 10).
+    let dim = 16;
+    let k = 10;
+    let (data, index) = build_threads(10_000, dim, true, 8);
+    let mut exact = crate::brute::BruteForce::new(dim, Space::L2);
+    exact.add(&data);
+    let queries = random_data(500, dim, 61);
+    let nq = 500;
+    for fraction in [0.5, 0.1, 0.01] {
+        let filter = random_mask(10_000, fraction, 7);
+        let (mut want, mut want_d) = (vec![0i64; nq * k], vec![0f32; nq * k]);
+        exact.knn_query_batch_filtered(&queries, k, Some(&filter), 0, &mut want, &mut want_d);
+        let (mut got, mut got_d) = (vec![0i64; nq * k], vec![0f32; nq * k]);
+        index.knn_query_batch_filtered(&queries, k, 50, Some(&filter), 0, 0, &mut got, &mut got_d);
+        assert!(got.iter().all(|&l| l >= 0 && filter.contains(l as u32)));
+        let hits: usize = want
+            .chunks(k)
+            .zip(got.chunks(k))
+            .map(|(w, g)| g.iter().filter(|x| w.contains(x)).count())
+            .sum();
+        let recall = hits as f64 / (nq * k) as f64;
+        assert!(recall >= 0.99, "{fraction}: recall@10 = {recall}");
+    }
+}
+
+#[test]
+fn max_candidates_caps_expansions() {
+    let dim = 16;
+    let (_, index) = build_threads(10_000, dim, true, 8);
+    let Repr::Frozen(f) = &index.repr else {
+        panic!("not frozen")
+    };
+    let view = f.view();
+    let filter = random_mask(10_000, 0.01, 8);
+    let queries = random_data(50, dim, 64);
+    let mut buf = SearchBuffers::default();
+    buf.visited.ensure_capacity(10_000);
+    let mut out = Vec::new();
+    let ep_id = view.entry().node.unwrap();
+    dispatch!(Level::new(), simd => {
+        for q in queries.chunks_exact(dim) {
+            let ep = Cand { dist: view.dist(simd, q, ep_id), id: ep_id };
+            for filter in [Some(&filter), None] {
+                let uncapped = search_layer_filtered(simd, &view, &mut buf, q, ep, 50, filter, 0, &mut out);
+                for cap in [1, 10, 100, 1_000] {
+                    let n = search_layer_filtered(simd, &view, &mut buf, q, ep, 50, filter, cap, &mut out);
+                    assert_eq!(n, uncapped.min(cap));
+                    assert!(out.iter().all(|c| filter.is_none_or(|f| f.contains(c.id))));
+                }
+            }
+        }
+    });
+    // A tight cap can leave fewer than k results, all passing.
+    let short = queries
+        .chunks_exact(dim)
+        .map(|q| index.knn_query_filtered(q, 10, 50, Some(&filter), 5))
+        .inspect(|found| assert!(found.iter().all(|r| filter.contains(r.0))))
+        .filter(|found| found.len() < 10)
+        .count();
+    assert!(short > 0);
 }

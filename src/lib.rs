@@ -1,3 +1,4 @@
+pub mod bitset;
 pub mod brute;
 pub mod frozen;
 pub mod hnsw;
@@ -10,14 +11,16 @@ use pyo3::prelude::*;
 mod nmslib_rs {
     use numpy::ndarray::Array2;
     use numpy::{
-        IntoPyArray, PyArray2, PyArrayDescrMethods, PyArrayMethods, PyUntypedArray,
+        IntoPyArray, PyArray1, PyArray2, PyArrayDescrMethods, PyArrayMethods, PyUntypedArray,
         PyUntypedArrayMethods, dtype,
     };
     use std::path::PathBuf;
 
     use pyo3::exceptions::{PyRuntimeError, PyValueError};
     use pyo3::prelude::*;
+    use pyo3::types::PyDict;
 
+    use crate::bitset::Bitset;
     use crate::brute::BruteForce;
     use crate::frozen::LoadError;
     use crate::hnsw::{Hnsw, Params, Space};
@@ -148,31 +151,95 @@ mod nmslib_rs {
         }
 
         /// Returns (labels, distances), each of shape (n_queries, k), nearest
-        /// first. Labels are int64; when the index holds fewer than k vectors
-        /// the missing entries are -1 with distance inf. `num_threads`: 0 uses
+        /// first. Labels are int64; when fewer than k results are found the
+        /// missing entries are -1 with distance inf. `num_threads`: 0 uses
         /// all cores. Several Python threads may query the same index at once.
-        #[pyo3(signature = (queries, k = 10, num_threads = 0))]
+        ///
+        /// `filter`: a bool array of shape (len(index),); only labels where it
+        /// is True are returned, for every query. The search still walks
+        /// through the other nodes, so when few labels pass it can visit much
+        /// of the index. `max_candidates` stops each search after that many
+        /// node expansions (0: no cap), which may return fewer than k.
+        #[pyo3(signature = (queries, k = 10, num_threads = 0, filter = None, max_candidates = 0))]
         fn knn_query<'py>(
             &self,
             py: Python<'py>,
             queries: &Bound<'py, PyAny>,
             k: usize,
             num_threads: usize,
+            filter: Option<&Bound<'py, PyAny>>,
+            max_candidates: i64,
         ) -> PyResult<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<f32>>)> {
             if k == 0 {
                 return Err(PyValueError::new_err("k must be positive"));
             }
+            let max_candidates = usize::try_from(max_candidates).map_err(|_| {
+                PyValueError::new_err(format!(
+                    "max_candidates must be non-negative, got {max_candidates}"
+                ))
+            })?;
             let (nq, data) = copy_matrix(queries, self.inner.dim(), "queries")?;
+            let filter = read_filter(filter, self.inner.len())?;
             let (ef, inner) = (self.ef, &self.inner);
             let (labels, dists) = py.detach(|| {
                 let mut labels = vec![-1i64; nq * k];
                 let mut dists = vec![f32::INFINITY; nq * k];
-                inner.knn_query_batch(&data, k, ef, num_threads, &mut labels, &mut dists);
+                inner.knn_query_batch_filtered(
+                    &data,
+                    k,
+                    ef,
+                    filter.as_ref(),
+                    max_candidates,
+                    num_threads,
+                    &mut labels,
+                    &mut dists,
+                );
                 (labels, dists)
             });
             let labels = Array2::from_shape_vec((nq, k), labels).expect("shape matches");
             let dists = Array2::from_shape_vec((nq, k), dists).expect("shape matches");
             Ok((labels.into_pyarray(py), dists.into_pyarray(py)))
+        }
+
+        /// Level-0 connectivity, for debugging: `reached` and `unreachable`
+        /// count nodes a breadth-first walk from the entry point does and
+        /// does not reach (a search can miss unreachable nodes at any ef),
+        /// `one_way_links` counts links without a reverse link (nonzero is
+        /// normal), and `mean_degree` / `min_degree` describe level-0 lists.
+        fn graph_stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+            let inner = &self.inner;
+            let h = py.detach(|| inner.graph_stats());
+            let d = PyDict::new(py);
+            d.set_item("nodes", h.nodes)?;
+            d.set_item("reached", h.reached)?;
+            d.set_item("unreachable", h.unreachable)?;
+            d.set_item("one_way_links", h.one_way_links)?;
+            d.set_item("mean_degree", h.mean_degree)?;
+            d.set_item("min_degree", h.min_degree)?;
+            Ok(d)
+        }
+
+        /// Queries every stored vector at beam width `ef`, for debugging:
+        /// `top1` counts vectors returned as their own nearest result (an
+        /// exact duplicate in first place counts), `missing` counts vectors
+        /// absent from their own top `ef`. Costs one query per vector.
+        #[pyo3(signature = (ef = 64, num_threads = 0))]
+        fn self_recall<'py>(
+            &self,
+            py: Python<'py>,
+            ef: usize,
+            num_threads: usize,
+        ) -> PyResult<Bound<'py, PyDict>> {
+            if ef == 0 {
+                return Err(PyValueError::new_err("ef must be positive"));
+            }
+            let inner = &self.inner;
+            let r = py.detach(|| inner.self_recall(ef, num_threads));
+            let d = PyDict::new(py);
+            d.set_item("nodes", r.nodes)?;
+            d.set_item("top1", r.top1)?;
+            d.set_item("missing", r.missing)?;
+            Ok(d)
         }
 
         #[getter]
@@ -254,24 +321,34 @@ mod nmslib_rs {
 
         /// Returns (labels, distances), each of shape (n_queries, k), nearest
         /// first, with the same conventions as `Index.knn_query`.
-        /// `num_threads`: 0 uses all cores.
-        #[pyo3(signature = (queries, k = 10, num_threads = 0))]
+        /// `num_threads`: 0 uses all cores. `filter` as in `Index.knn_query`,
+        /// so this gives the exact answer for a filtered `Index` query.
+        #[pyo3(signature = (queries, k = 10, num_threads = 0, filter = None))]
         fn knn_query<'py>(
             &self,
             py: Python<'py>,
             queries: &Bound<'py, PyAny>,
             k: usize,
             num_threads: usize,
+            filter: Option<&Bound<'py, PyAny>>,
         ) -> PyResult<(Bound<'py, PyArray2<i64>>, Bound<'py, PyArray2<f32>>)> {
             if k == 0 {
                 return Err(PyValueError::new_err("k must be positive"));
             }
             let (nq, data) = copy_matrix(queries, self.inner.dim(), "queries")?;
+            let filter = read_filter(filter, self.inner.len())?;
             let inner = &self.inner;
             let (labels, dists) = py.detach(|| {
                 let mut labels = vec![-1i64; nq * k];
                 let mut dists = vec![f32::INFINITY; nq * k];
-                inner.knn_query_batch(&data, k, num_threads, &mut labels, &mut dists);
+                inner.knn_query_batch_filtered(
+                    &data,
+                    k,
+                    filter.as_ref(),
+                    num_threads,
+                    &mut labels,
+                    &mut dists,
+                );
                 (labels, dists)
             });
             let labels = Array2::from_shape_vec((nq, k), labels).expect("shape matches");
@@ -358,5 +435,47 @@ mod nmslib_rs {
             .as_slice()
             .map_err(|e| PyValueError::new_err(format!("{what}: {e}")))?;
         Ok((arr.shape()[0], slice.to_vec()))
+    }
+
+    /// Validates a filter mask, a C-contiguous bool array of shape (n,), and
+    /// packs it into a bitset while the GIL is held. `None` means no filter.
+    fn read_filter(obj: Option<&Bound<'_, PyAny>>, n: usize) -> PyResult<Option<Bitset>> {
+        let Some(obj) = obj.filter(|o| !o.is_none()) else {
+            return Ok(None);
+        };
+        let fix = "convert with np.ascontiguousarray(mask, dtype=bool)";
+        let arr = obj.cast::<PyUntypedArray>().map_err(|_| {
+            let ty = obj
+                .get_type()
+                .name()
+                .map(|n| n.to_string())
+                .unwrap_or_default();
+            PyValueError::new_err(format!("filter must be a numpy.ndarray, got {ty}"))
+        })?;
+        if arr.ndim() != 1 || arr.shape()[0] != n {
+            return Err(PyValueError::new_err(format!(
+                "filter must have shape ({n},), one entry per label, got {:?}",
+                arr.shape()
+            )));
+        }
+        if !arr.dtype().is_equiv_to(&dtype::<bool>(obj.py())) {
+            return Err(PyValueError::new_err(format!(
+                "filter must have dtype bool, got {}; {fix}",
+                arr.dtype()
+            )));
+        }
+        if !arr.is_c_contiguous() {
+            return Err(PyValueError::new_err(format!(
+                "filter must be contiguous; {fix}"
+            )));
+        }
+        let typed = arr.cast::<PyArray1<bool>>()?;
+        let view = typed
+            .try_readonly()
+            .map_err(|e| PyValueError::new_err(format!("filter: {e}")))?;
+        let slice = view
+            .as_slice()
+            .map_err(|e| PyValueError::new_err(format!("filter: {e}")))?;
+        Ok(Some(Bitset::from_bools(slice)))
     }
 }

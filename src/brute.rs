@@ -12,6 +12,7 @@ use std::collections::BinaryHeap;
 use fearless_simd::{Level, dispatch};
 use rayon::prelude::*;
 
+use crate::bitset::Bitset;
 use crate::hnsw::{Cand, Space, normalize};
 use crate::simd::{dot_in, l2_sq_in};
 
@@ -77,7 +78,7 @@ impl BruteForce {
         assert_eq!(query.len(), self.dim, "query has the wrong dimension");
         let mut heap = BinaryHeap::with_capacity(k.min(self.len()) + 1);
         let mut q = Vec::new();
-        self.scan(query, k, &mut q, &mut heap);
+        self.scan(query, k, None, &mut q, &mut heap);
         heap.into_sorted_vec()
             .into_iter()
             .map(|c| (c.id, c.dist))
@@ -96,6 +97,21 @@ impl BruteForce {
         labels: &mut [i64],
         distances: &mut [f32],
     ) {
+        self.knn_query_batch_filtered(queries, k, None, threads, labels, distances);
+    }
+
+    /// [`BruteForce::knn_query_batch`] returning only labels in `filter`,
+    /// which must cover every label: the exact answer for
+    /// [`Hnsw::knn_query_batch_filtered`](crate::hnsw::Hnsw::knn_query_batch_filtered).
+    pub fn knn_query_batch_filtered(
+        &self,
+        queries: &[f32],
+        k: usize,
+        filter: Option<&Bitset>,
+        threads: usize,
+        labels: &mut [i64],
+        distances: &mut [f32],
+    ) {
         let dim = self.dim;
         assert!(k > 0, "k must be positive");
         assert!(
@@ -107,10 +123,13 @@ impl BruteForce {
             labels.len() == nq * k && distances.len() == nq * k,
             "output buffers have the wrong size"
         );
+        if let Some(f) = filter {
+            assert!(f.len() >= self.len(), "filter does not cover every label");
+        }
         let one = |scratch: &mut Scratch, q: &[f32], labels: &mut [i64], dists: &mut [f32]| {
             labels.fill(-1);
             dists.fill(f32::INFINITY);
-            self.scan(q, k, &mut scratch.query, &mut scratch.heap);
+            self.scan(q, k, filter, &mut scratch.query, &mut scratch.heap);
             scratch.found.clear();
             scratch.found.extend(scratch.heap.drain());
             scratch.found.sort_unstable();
@@ -150,9 +169,16 @@ impl BruteForce {
         }
     }
 
-    /// Leaves the `k` nearest of `query` in `heap`, a max-heap on (distance,
-    /// id). `q_buf` holds the normalized query for cosine.
-    fn scan(&self, query: &[f32], k: usize, q_buf: &mut Vec<f32>, heap: &mut BinaryHeap<Cand>) {
+    /// Leaves the `k` nearest of `query` in `filter` in `heap`, a max-heap on
+    /// (distance, id). `q_buf` holds the normalized query for cosine.
+    fn scan(
+        &self,
+        query: &[f32],
+        k: usize,
+        filter: Option<&Bitset>,
+        q_buf: &mut Vec<f32>,
+        heap: &mut BinaryHeap<Cand>,
+    ) {
         heap.clear();
         if k == 0 {
             return;
@@ -168,6 +194,9 @@ impl BruteForce {
         let space = self.space;
         dispatch!(self.simd_level, simd => {
             for (id, v) in self.data.chunks_exact(self.dim).enumerate() {
+                if filter.is_some_and(|f| !f.contains(id as u32)) {
+                    continue;
+                }
                 let dist = match space {
                     Space::L2 => l2_sq_in(simd, q, v),
                     Space::Cosine => 1.0 - dot_in(simd, q, v),

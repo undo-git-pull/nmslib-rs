@@ -79,16 +79,42 @@ The GIL is released during the build. Calling `add_items` on an index loaded wit
 
 Sets the query beam width (`efSearch` in NMSLIB). The default is 10. A query searches with `max(ef, k)`, so `ef` below `k` has no effect. Higher values raise recall and lower throughput; see the table under "Benchmark" below. `ef=0` raises `ValueError`.
 
-### `knn_query(queries, k=10, num_threads=0)`
+### `knn_query(queries, k=10, num_threads=0, filter=None, max_candidates=0)`
 
 Finds the `k` nearest neighbors of each row of `queries`, which has the same requirements as the `vectors` argument to `add_items`. Returns a tuple `(labels, distances)`:
 
 - `labels`: `int64` array of shape `(n_queries, k)`.
 - `distances`: `float32` array of shape `(n_queries, k)`, nearest first.
 
-Distances are squared L2 for `space="l2"` and `1 - cosine similarity` for `space="cosine"`. If the index holds fewer than `k` vectors, the missing entries have label `-1` and distance `inf`.
+Distances are squared L2 for `space="l2"` and `1 - cosine similarity` for `space="cosine"`. If fewer than `k` results are found, the missing entries have label `-1` and distance `inf`.
 
 `num_threads=0` spreads the queries across all cores. The GIL is released during the search, and several Python threads may query one index at the same time. `k=0` raises `ValueError`.
+
+`filter` restricts the results to a subset of labels. It is a contiguous `numpy.ndarray` of dtype `bool` and shape `(len(index),)`, and only labels where it is `True` are returned; the same mask applies to every query. Anything else raises `ValueError`.
+
+```python
+mask = categories == "shoes"            # one bool per label
+labels, distances = index.knn_query(queries, k=10, filter=mask)
+```
+
+The search still walks through nodes outside the filter, so the graph stays connected however few labels pass, and it keeps searching until it has `max(ef, k)` passing results or runs out of graph. When most labels pass this costs about the same as an unfiltered query. When few pass, a query can visit a large part of the index. On 100,000 SIFT vectors on one thread, unfiltered queries reach recall@10 0.998 at about 14,000 queries per second; with 10% of labels passing, filtered queries reach the same recall (within the filter) at about 8,000 per second, and with 1% passing at about 2,100 per second. `max_candidates` caps the number of nodes a query expands (`0`, the default, means no cap). With 1% passing, `max_candidates=2000` kept recall at 1.0 and held throughput near 1,100 per second at every `ef`, where uncapped queries at `ef=640` slowed to 67 per second. A query that hits the cap returns the passing results it has found, which may be fewer than `k`, padded with `-1` / `inf`. A negative value raises `ValueError`.
+
+### `graph_stats()` and `self_recall(ef=64, num_threads=0)`
+
+Debugging tools that check a built or loaded index; both are read-only and release the GIL.
+
+`graph_stats()` walks level 0 of the graph breadth-first from the entry point and returns a dict:
+
+- `nodes`, `reached`, `unreachable`: node counts. A search can miss an unreachable node at any `ef`, so `unreachable` should be 0. Sequential builds and builds with `post=True` have had none in testing; a parallel build without `post` can strand a few, more with more threads.
+- `one_way_links`: links whose target does not link back. Pruning drops links one direction at a time, so this is normally well above zero.
+- `mean_degree`, `min_degree`: level-0 neighbor list lengths.
+
+`self_recall(ef=64)` queries every stored vector with itself and returns `{"nodes", "top1", "missing"}`: how many vectors came back as their own nearest result, and how many were absent from their own top `ef`. A vector whose exact duplicate takes first place counts as found. It costs one query per stored vector.
+
+```python
+index.graph_stats()   # {'nodes': 100000, 'reached': 100000, 'unreachable': 0, ...}
+index.self_recall()   # {'nodes': 100000, 'top1': 100000, 'missing': 0}
+```
 
 ### `save(path)`
 
@@ -129,7 +155,7 @@ true_labels, true_distances = exact.knn_query(queries, k=10)
 recall = np.mean([len(set(a) & set(b)) / 10 for a, b in zip(labels, true_labels)])
 ```
 
-It has `add_items(vectors)`, `knn_query(queries, k=10, num_threads=0)`, `dim`, `space` and `len()`, with the same input checks and return conventions as `Index`. There is no `ef`, and the index cannot be saved. Each query reads every stored vector, so query time grows linearly with the index size: on an Apple M1 Max with 100,000 SIFT vectors it answers about 930 queries per second on one thread, against about 9,000 for `Index` at `ef=80` with recall@10 of 0.998 (see `bench/brute_force.py` and `bench/results/nmslib_rs_100k_mac.json`).
+It has `add_items(vectors)`, `knn_query(queries, k=10, num_threads=0, filter=None)`, `dim`, `space` and `len()`, with the same input checks and return conventions as `Index`. There is no `ef`, and the index cannot be saved. Each query reads every stored vector, so query time grows linearly with the index size: on an Apple M1 Max with 100,000 SIFT vectors it answers about 930 queries per second on one thread, against about 9,000 for `Index` at `ef=80` with recall@10 of 0.998 (see `bench/brute_force.py` and `bench/results/nmslib_rs_100k_mac.json`).
 
 ### `simd_level()`
 
@@ -137,7 +163,8 @@ Returns the name of the SIMD instruction set the distance kernels selected on th
 
 ## Limitations
 
-- Vectors are dense `float32`. There is no deletion, no update of existing vectors and no sparse or quantized storage.
+- Vectors are dense `float32`. There is no sparse or quantized storage, and no update of existing vectors.
+- There is no true deletion, but a mask can hide deleted labels: keep a `bool` array with `False` for each deleted label and pass it as `filter` to every query. The vectors stay in the index and are still walked through during search, so a query slows down as the deleted fraction grows; rebuild the index once many labels are deleted.
 - Labels are always insertion positions. Keep your own array to map them to external ids.
 - Floating-point distances differ slightly between the AVX and NEON kernels, so a file saved on one architecture and loaded on another can return slightly different distances and, rarely, a different order among near ties.
 

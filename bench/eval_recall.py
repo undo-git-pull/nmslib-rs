@@ -6,6 +6,11 @@ same JSON layout. Also records the parity check against the NMSLIB baseline.
 
     python bench/eval_recall.py --n 100000
     python bench/eval_recall.py --dataset glove --n 0         # all of GloVe-100
+    python bench/eval_recall.py --filter-fraction 0.01        # filtered search
+
+With --filter-fraction, every query passes the same random mask as `filter`,
+recall is measured against the exact answer within the mask, and the NMSLIB
+parity check is skipped.
 """
 
 from __future__ import annotations
@@ -23,13 +28,29 @@ import numpy as np
 import common
 
 
-def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool) -> dict:
+FILTER_SEED = 12345
+
+
+def filter_mask(n: int, fraction: float) -> np.ndarray:
+    """The benchmark's filter over dataset ids, the same for every build."""
+    return np.random.default_rng(FILTER_SEED).random(n) < fraction
+
+
+def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool,
+              filter_fraction: float | None = None, max_candidates: int = 0) -> dict:
     import nmslib_rs
 
     ds = common.DATASETS[dataset]
     base, queries = common.load(ds, n)
-    gt = common.ground_truth(base, queries, ds=ds)
+    if filter_fraction is None:
+        gt = common.ground_truth(base, queries, ds=ds)
+    else:
+        mask = filter_mask(len(base), filter_fraction)
+        passing = np.flatnonzero(mask)
+        gt = passing[common.brute_force_knn(base[passing], queries, common.K, ds.metric)]
     order = np.random.default_rng(seed).permutation(len(base))
+    # Labels are positions in the shuffled order, so the filter is too.
+    label_filter = None if filter_fraction is None else np.ascontiguousarray(mask[order])
     shuffled = np.ascontiguousarray(base[order])
 
     index = nmslib_rs.Index(dim=base.shape[1], space=ds.metric, M=common.M,
@@ -58,7 +79,8 @@ def run_build(dataset: str, n: int, seed: int, threads: int, mmap: bool) -> dict
         index.set_ef(ef)
         common.reset_peak_rss()
         t0 = time.perf_counter()
-        labels, _ = index.knn_query(queries, k=common.K, num_threads=1)
+        labels, _ = index.knn_query(queries, k=common.K, num_threads=1, filter=label_filter,
+                                    max_candidates=max_candidates)
         elapsed = time.perf_counter() - t0
         found = np.where(labels >= 0, order[np.maximum(labels, 0)], -1)
         r = common.recall(base, queries, gt, found, ds.metric)
@@ -97,6 +119,10 @@ def main() -> None:
                     help="query a saved, memory-mapped copy of each built index")
     ap.add_argument("--threads", type=int, default=32,
                     help="build threads (NMSLIB baseline uses indexThreadQty=32; 1 = sequential)")
+    ap.add_argument("--filter-fraction", type=float,
+                    help="query with a random filter passing this fraction of labels")
+    ap.add_argument("--max-candidates", type=int, default=0,
+                    help="expansion cap for filtered queries (0 = none)")
     ap.add_argument("--reference", help="NMSLIB JSON for the parity check "
                     "(default bench/results/nmslib_<dataset><n>.json)")
     ap.add_argument("--out", help="output JSON (default bench/results/nmslib_rs_<n>.json)")
@@ -105,8 +131,12 @@ def main() -> None:
     if args.n == 0:
         args.n = ds.full_n
 
+    filtered = args.filter_fraction is not None
+    if filtered and not 0 < args.filter_fraction <= 1:
+        ap.error("--filter-fraction must be in (0, 1]")
     base, queries = common.load(ds, args.n)
-    common.ground_truth(base, queries, ds=ds)
+    if not filtered:
+        common.ground_truth(base, queries, ds=ds)
     del base, queries
 
     import nmslib_rs
@@ -115,10 +145,15 @@ def main() -> None:
     builds = []
     for seed in range(1, args.builds + 1):
         with ctx.Pool(1) as pool:
-            builds.append(pool.apply(run_build, (args.dataset, args.n, seed, args.threads, args.mmap)))
+            builds.append(pool.apply(run_build, (args.dataset, args.n, seed, args.threads, args.mmap,
+                                                 args.filter_fraction, args.max_candidates)))
 
-    reference = json.loads(open(args.reference or common.result_path("nmslib", ds, args.n)).read())
-    parity = common.parity(reference, builds)
+    if filtered:
+        reference = {"recall_metric": "distance-based recall@10 within the filter"}
+        parity = []
+    else:
+        reference = json.loads(open(args.reference or common.result_path("nmslib", ds, args.n)).read())
+        parity = common.parity(reference, builds)
     result = {
         "library": "nmslib_rs",
         "library_version": version("nmslib-rs"),
@@ -131,15 +166,21 @@ def main() -> None:
         "recall_metric": reference["recall_metric"],
         "query_threads": 1,
         "queried_index": "memory-mapped" if args.mmap else "in-memory",
+        **({"filter": {"fraction": args.filter_fraction, "seed": FILTER_SEED,
+                       "passing": int(filter_mask(args.n, args.filter_fraction).sum()),
+                       "max_candidates": args.max_candidates}} if filtered else {}),
         "params": {"M": common.M, "efConstruction": common.EF_CONSTRUCTION, "post": True,
                    "build_threads": args.threads},
         "machine": common.machine_info(),
         "builds": builds,
         "noise_band": common.noise_band(builds),
-        "parity_vs_nmslib": parity,
-        "all_pass": all(p["pass"] for p in parity),
+        **({} if filtered else {"parity_vs_nmslib": parity,
+                                "all_pass": all(p["pass"] for p in parity)}),
     }
     out = args.out or common.result_path("nmslib_rs", ds, args.n)
+    if filtered and not args.out:
+        out = out.with_name(f"{out.stem}_filter{args.filter_fraction:g}"
+                            + (f"_cap{args.max_candidates}" if args.max_candidates else "") + out.suffix)
     common.RESULTS_DIR.mkdir(exist_ok=True)
     with open(out, "w") as f:
         json.dump(result, f, indent=2)

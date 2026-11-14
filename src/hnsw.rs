@@ -20,7 +20,7 @@
 //! computes distances runs inside it through `Simd::vectorize`.
 
 use std::cmp::{Ordering, Reverse};
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, VecDeque};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{
     AtomicU32, AtomicU64, AtomicUsize, Ordering::Acquire, Ordering::Relaxed, Ordering::Release,
@@ -34,6 +34,7 @@ use rayon::prelude::*;
 
 use std::path::Path;
 
+use crate::bitset::Bitset;
 use crate::frozen::{self, Frozen, LoadError, Meta};
 use crate::simd::{dot_in, l2_sq_in, prefetch_in};
 use crate::visited::VisitedSet;
@@ -619,12 +620,40 @@ impl Hnsw {
     /// The `k` nearest neighbors of `query`, nearest first, as `(id, distance)`.
     /// L2 distances are squared. Searches level 0 with `max(ef_search, k)`.
     pub fn knn_query(&self, query: &[f32], k: usize, ef_search: usize) -> Vec<(u32, f32)> {
+        self.knn_query_filtered(query, k, ef_search, None, 0)
+    }
+
+    /// [`Hnsw::knn_query`] returning only labels in `filter`, which must
+    /// cover every label. The search still walks through nodes outside the
+    /// filter; when few labels pass it can expand much of the graph to find
+    /// `k`. `max_candidates` stops it after that many level-0 expansions
+    /// (0: no cap), so fewer than `k` may come back.
+    pub fn knn_query_filtered(
+        &self,
+        query: &[f32],
+        k: usize,
+        ef_search: usize,
+        filter: Option<&Bitset>,
+        max_candidates: usize,
+    ) -> Vec<(u32, f32)> {
         assert_eq!(query.len(), self.dim(), "query has the wrong dimension");
+        self.check_filter(filter);
         let mut scratch = self.scratch.get(self.len());
-        self.search(query, k, ef_search, &mut scratch)
+        self.search(query, k, ef_search, filter, max_candidates, &mut scratch)
             .iter()
             .map(|c| (c.id, c.dist))
             .collect()
+    }
+
+    fn check_filter(&self, filter: Option<&Bitset>) {
+        if let Some(f) = filter {
+            assert!(
+                f.len() >= self.len(),
+                "filter covers {} labels, index holds {}",
+                f.len(),
+                self.len()
+            );
+        }
     }
 
     /// Queries every row of `queries` and writes the results row by row into
@@ -635,6 +664,23 @@ impl Hnsw {
         queries: &[f32],
         k: usize,
         ef_search: usize,
+        threads: usize,
+        labels: &mut [i64],
+        distances: &mut [f32],
+    ) {
+        self.knn_query_batch_filtered(queries, k, ef_search, None, 0, threads, labels, distances);
+    }
+
+    /// [`Hnsw::knn_query_batch`] with a filter and expansion cap, as in
+    /// [`Hnsw::knn_query_filtered`]. The filter applies to every query.
+    #[allow(clippy::too_many_arguments)]
+    pub fn knn_query_batch_filtered(
+        &self,
+        queries: &[f32],
+        k: usize,
+        ef_search: usize,
+        filter: Option<&Bitset>,
+        max_candidates: usize,
         threads: usize,
         labels: &mut [i64],
         distances: &mut [f32],
@@ -650,11 +696,13 @@ impl Hnsw {
             labels.len() == nq * k && distances.len() == nq * k,
             "output buffers have the wrong size"
         );
+        self.check_filter(filter);
         let n = self.len();
         let one = |scratch: &mut Scratch, q: &[f32], labels: &mut [i64], dists: &mut [f32]| {
             labels.fill(-1);
             dists.fill(f32::INFINITY);
-            for (j, c) in self.search(q, k, ef_search, scratch).iter().enumerate() {
+            let found = self.search(q, k, ef_search, filter, max_candidates, scratch);
+            for (j, c) in found.iter().enumerate() {
                 labels[j] = c.id as i64;
                 dists[j] = c.dist;
             }
@@ -682,28 +730,48 @@ impl Hnsw {
         });
     }
 
-    /// The `k` nearest of `query`, nearest first, in `scratch.found`.
+    /// The `k` nearest of `query` in `filter`, nearest first, in
+    /// `scratch.found`.
     fn search<'s>(
         &self,
         query: &[f32],
         k: usize,
         ef_search: usize,
+        filter: Option<&Bitset>,
+        max_candidates: usize,
         scratch: &'s mut Scratch,
     ) -> &'s [Cand] {
         match &self.repr {
-            Repr::Build { store, graph } => {
-                self.search_in(&BuildView { store, graph }, query, k, ef_search, scratch)
-            }
-            Repr::Frozen(f) => self.search_in(&f.view(), query, k, ef_search, scratch),
+            Repr::Build { store, graph } => self.search_in(
+                &BuildView { store, graph },
+                query,
+                k,
+                ef_search,
+                filter,
+                max_candidates,
+                scratch,
+            ),
+            Repr::Frozen(f) => self.search_in(
+                &f.view(),
+                query,
+                k,
+                ef_search,
+                filter,
+                max_candidates,
+                scratch,
+            ),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn search_in<'s, V: View>(
         &self,
         view: &V,
         query: &[f32],
         k: usize,
         ef_search: usize,
+        filter: Option<&Bitset>,
+        max_candidates: usize,
         scratch: &'s mut Scratch,
     ) -> &'s [Cand] {
         let entry = view.entry();
@@ -711,21 +779,21 @@ impl Hnsw {
         let Some(ep_id) = entry.node else {
             return &scratch.found;
         };
-        let q = if view.space() == Space::Cosine {
-            scratch.query.clear();
-            scratch.query.extend_from_slice(query);
-            normalize(&mut scratch.query);
-            &scratch.query[..]
-        } else {
-            query
-        };
+        let q = query_vector(view.space(), query, &mut scratch.query);
         let ef = ef_search.max(k).max(1);
         dispatch!(self.simd_level, simd => {
             let mut ep = Cand { dist: view.dist(simd, q, ep_id), id: ep_id };
             for level in (1..=entry.max_level).rev() {
                 ep = greedy(simd, view, q, ep, level);
             }
-            search_layer(simd, view, &mut scratch.search, q, ep, ef, 0, &mut scratch.found);
+            if filter.is_none() && max_candidates == 0 {
+                search_layer(simd, view, &mut scratch.search, q, ep, ef, 0, &mut scratch.found);
+            } else {
+                search_layer_filtered(
+                    simd, view, &mut scratch.search, q, ep, ef, filter, max_candidates,
+                    &mut scratch.found,
+                );
+            }
         });
         scratch.found.truncate(k);
         &scratch.found
@@ -861,6 +929,61 @@ impl Hnsw {
             Repr::Frozen(f) => stats_of(&f.view()),
         }
     }
+
+    /// Level-0 connectivity from the entry point, for checking that a built
+    /// or loaded graph lets searches reach every node. Read-only.
+    pub fn graph_stats(&self) -> GraphHealth {
+        match &self.repr {
+            Repr::Build { store, graph } => health_of(&BuildView { store, graph }),
+            Repr::Frozen(f) => health_of(&f.view()),
+        }
+    }
+
+    /// Queries every node with its own vector at `ef` and counts how often
+    /// it comes back first and how often it is missing from the results.
+    /// A node with an exact duplicate counts as found when the duplicate
+    /// takes its place. `threads` as in [`Hnsw::add_vec`].
+    pub fn self_recall(&self, ef: usize, threads: usize) -> SelfRecall {
+        assert!(ef > 0, "ef must be positive");
+        match &self.repr {
+            Repr::Build { store, graph } => {
+                self.self_recall_in(&BuildView { store, graph }, ef, threads)
+            }
+            Repr::Frozen(f) => self.self_recall_in(&f.view(), ef, threads),
+        }
+    }
+
+    fn self_recall_in<V: View>(&self, view: &V, ef: usize, threads: usize) -> SelfRecall {
+        let n = view.len();
+        // (top-1 hits, misses) for one node.
+        let check = |scratch: &mut Scratch, id: u32| -> (usize, usize) {
+            let q = view.vector(id);
+            let found = self.search_in(view, q, ef, ef, None, 0, scratch);
+            let is_self = |c: &Cand| c.id == id || view.vector(c.id) == q;
+            let top1 = found.first().is_some_and(is_self);
+            let present = top1 || found.iter().any(is_self);
+            (top1 as usize, !present as usize)
+        };
+        let add = |a: (usize, usize), b: (usize, usize)| (a.0 + b.0, a.1 + b.1);
+        let (top1, missing) = if threads == 1 {
+            let mut scratch = self.scratch.get(n);
+            (0..n as u32)
+                .map(|id| check(&mut scratch, id))
+                .fold((0, 0), add)
+        } else {
+            self.run_parallel(threads, || {
+                (0..n as u32)
+                    .into_par_iter()
+                    .map_init(|| self.scratch.get(n), |scratch, id| check(scratch, id))
+                    .reduce(|| (0, 0), add)
+            })
+        };
+        SelfRecall {
+            nodes: n,
+            top1,
+            missing,
+        }
+    }
 }
 
 fn store_from_view<V: View>(v: &V, dim: usize) -> Store {
@@ -927,6 +1050,75 @@ pub struct GraphStats {
     /// Nodes present at each level (a node at level `l` is in levels `0..=l`).
     pub nodes_per_level: Vec<usize>,
     pub mean_degree: Vec<f64>,
+}
+
+/// Breadth-first walk from the entry point over level-0 links, then a count
+/// of links without a reverse link and of level-0 degrees.
+fn health_of<V: View>(v: &V) -> GraphHealth {
+    let n = v.len();
+    let mut reached = 0;
+    if let Some(entry) = v.entry().node {
+        let mut visited = VisitedSet::new(n);
+        visited.clear();
+        visited.insert(entry);
+        let mut queue = VecDeque::from([entry]);
+        while let Some(id) = queue.pop_front() {
+            reached += 1;
+            for nb in v.neighbors(id, 0) {
+                if visited.insert(nb) {
+                    queue.push_back(nb);
+                }
+            }
+        }
+    }
+    let (mut links, mut one_way_links, mut min_degree) = (0, 0, usize::MAX);
+    for id in 0..n as u32 {
+        let mut degree = 0;
+        for nb in v.neighbors(id, 0) {
+            degree += 1;
+            if !v.neighbors(nb, 0).any(|x| x == id) {
+                one_way_links += 1;
+            }
+        }
+        links += degree;
+        min_degree = min_degree.min(degree);
+    }
+    GraphHealth {
+        nodes: n,
+        reached,
+        unreachable: n - reached,
+        one_way_links,
+        mean_degree: if n == 0 { 0.0 } else { links as f64 / n as f64 },
+        min_degree: if n == 0 { 0 } else { min_degree },
+    }
+}
+
+/// Level-0 connectivity, from [`Hnsw::graph_stats`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphHealth {
+    pub nodes: usize,
+    /// Nodes a breadth-first walk from the entry point over level-0 links
+    /// reaches, the entry point included.
+    pub reached: usize,
+    /// Nodes that walk never reaches. A search can miss them even at a large
+    /// `ef`.
+    pub unreachable: usize,
+    /// Level-0 links whose target does not link back. Nonzero is normal:
+    /// pruning a full list drops links one direction at a time.
+    pub one_way_links: usize,
+    /// Mean and minimum level-0 out-degree.
+    pub mean_degree: f64,
+    pub min_degree: usize,
+}
+
+/// Self-query results, from [`Hnsw::self_recall`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelfRecall {
+    pub nodes: usize,
+    /// Nodes returned as their own nearest result.
+    pub top1: usize,
+    /// Nodes missing from their own top `ef` results.
+    pub missing: usize,
 }
 
 /// Inserts node `id`, whose vector and level already exist in the store and
@@ -1104,6 +1296,112 @@ fn search_layer<S: Simd, V: View>(
     )
 }
 
+/// Level-0 beam search that returns only nodes in `filter` (every node when
+/// `None`). The traversal ignores the filter: a neighbor is queued under the
+/// same rule as in `search_layer`, but judged against the passing results,
+/// so while fewer than `ef` nodes have passed every neighbor is queued and
+/// the search keeps widening. It stops when the next candidate is farther
+/// than the worst of `ef` passing results, when no candidates are left, or
+/// after `max_candidates` expansions (0: no cap). Writes up to `ef` passing
+/// nodes, nearest first, to `out` and returns the number of expansions. With
+/// every node passing and no cap it gives the same results as `search_layer`.
+///
+/// Not inlined: inlined into `search_in`, it changed LLVM's inlining of the
+/// unfiltered path and made unfiltered queries 2-6% slower on SIFT.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn search_layer_filtered<S: Simd, V: View>(
+    simd: S,
+    view: &V,
+    buf: &mut SearchBuffers,
+    q: &[f32],
+    ep: Cand,
+    ef: usize,
+    filter: Option<&Bitset>,
+    max_candidates: usize,
+    out: &mut Vec<Cand>,
+) -> usize {
+    simd.vectorize(
+        #[inline(always)]
+        || {
+            let SearchBuffers {
+                visited,
+                candidates,
+                results,
+                fresh,
+            } = buf;
+            let passes = |id: u32| filter.is_none_or(|f| f.contains(id));
+            let cap = if max_candidates == 0 {
+                usize::MAX
+            } else {
+                max_candidates
+            };
+            visited.clear();
+            visited.insert(ep.id);
+            candidates.clear();
+            results.clear();
+            candidates.push(Reverse(ep));
+            if passes(ep.id) {
+                results.push(ep);
+            }
+            let mut expansions = 0;
+            #[cfg(feature = "counters")]
+            let mut n_dist = 0u64;
+            while let Some(Reverse(c)) = candidates.pop() {
+                if expansions == cap {
+                    break;
+                }
+                if results.len() >= ef && c.dist > results.peek().unwrap().dist {
+                    break;
+                }
+                expansions += 1;
+                fresh.clear();
+                fresh.extend(view.neighbors(c.id, 0));
+                for &nb in fresh.iter() {
+                    prefetch_in(simd, visited.slot_memory(nb));
+                }
+                fresh.retain(|&nb| {
+                    let new = visited.insert(nb);
+                    if new {
+                        prefetch_in(simd, view.vector(nb));
+                    }
+                    new
+                });
+                for &nb in fresh.iter() {
+                    #[cfg(feature = "counters")]
+                    {
+                        n_dist += 1;
+                    }
+                    let d = view.dist(simd, q, nb);
+                    if results.len() < ef || d < results.peek().unwrap().dist {
+                        let cand = Cand { dist: d, id: nb };
+                        candidates.push(Reverse(cand));
+                        if passes(nb) {
+                            results.push(cand);
+                            if results.len() > ef {
+                                results.pop();
+                            }
+                        }
+                    }
+                }
+                if let Some(Reverse(next)) = candidates.peek() {
+                    view.prefetch_list(simd, next.id, 0);
+                }
+            }
+            #[cfg(feature = "counters")]
+            {
+                counters::DISTANCES.fetch_add(n_dist, std::sync::atomic::Ordering::Relaxed);
+                counters::EXPANSIONS
+                    .fetch_add(expansions as u64, std::sync::atomic::Ordering::Relaxed);
+            }
+            out.clear();
+            out.extend(results.drain());
+            out.sort_unstable();
+            expansions
+        },
+    )
+}
+
 /// The HNSW neighbor-selection heuristic (paper Algorithm 4, as in NMSLIB).
 ///
 /// `cands` must be sorted nearest first by distance to the base point. A
@@ -1196,6 +1494,18 @@ fn add_link<S: Simd>(
             graph.set_neighbors(id, level, ids);
         },
     )
+}
+
+/// The query as searched: for cosine, a normalized copy in `buf`.
+fn query_vector<'a>(space: Space, query: &'a [f32], buf: &'a mut Vec<f32>) -> &'a [f32] {
+    if space == Space::Cosine {
+        buf.clear();
+        buf.extend_from_slice(query);
+        normalize(buf);
+        &buf[..]
+    } else {
+        query
+    }
 }
 
 /// Scales `v` to unit length; leaves a zero vector unchanged.
